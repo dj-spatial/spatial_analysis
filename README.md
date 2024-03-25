@@ -1,1 +1,3 @@
-# spatial_analysis
+# SpatialAnalyzer
+
+Central Tendancy
