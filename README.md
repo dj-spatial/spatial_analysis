@@ -1,3 +1,6 @@
 # SpatialAnalyzer
 
-Central Tendancy
+
+
+## Central Tendancy
+ㄴㄻㅇㄴㅁㄹ
