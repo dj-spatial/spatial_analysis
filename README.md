@@ -1,5 +1,5 @@
 # SpatialAnalyzer
-The Plugin implements spatial clustering, central tendancy and distribution to perform spatial analysis. Users can choose analysis tools and the results will be displayed on the canvas.
+The Plugin implements spatial clustering, central tendancy and distribution to perform spatial analysis for Qgis. Users can choose analysis tools and the results will be displayed on the canvas.
 
 
 ## Features
