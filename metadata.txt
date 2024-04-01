@@ -1,0 +1,38 @@
+# This file contains metadata for your plugin.
+
+# This file should be included when you package your plugin.# Mandatory items:
+
+[general]
+name=Spatial Analyzer
+qgisMinimumVersion=3.0
+description=Spatial Analysis Tools 
+version=0.1.1
+author=D.J Paek
+email=dj.paek1@gmail.com
+
+about=Spatial Analyzer provides several spatial analysis tools including:</br>1.spatial central tendency</br> - mean center</br> - median center</br> - central feature</br>2.spatial dispersion</br> - standard distance</br> - standard deviation ellipse</br>3. cluster analysis</br> - k-mean</br> - hierarchial</br> - DBscan</br>
+
+tracker=https://github.com/dj-spatial/spatial_analysis/issues
+repository=https://github.com/dj-spatial/spatial_analysis
+# End of mandatory metadata
+
+# Recommended items:
+
+# hasProcessingProvider=yes
+# Uncomment the following line and add your changelog:
+
+  
+# Tags are comma separated with spaces allowed
+tags=mean center,median center,central feature,standard distance, standard distance ellipse, cluster, accumulated mean center
+
+homepage=https://github.com/dj-spatial/spatial_analysis
+category=Spatial Analysis, Vector
+icon=icon.png
+# experimental flag
+experimental=False
+
+# deprecated flag (applies to the whole plugin, not just a single version)
+deprecated=False
+
+# If the plugin can run on QGIS Server.
+server=False
