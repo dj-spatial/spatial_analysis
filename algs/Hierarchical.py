@@ -48,19 +48,17 @@ import numpy as np
 from scipy.cluster.hierarchy import linkage
 from scipy.cluster.hierarchy import fcluster
 from spatial_analysis.forms.HarchiParam import ParameterHarchi
+from spatial_analysis.forms.VariableParam import ParameterVariable
 
 pluginPath = os.path.split(os.path.split(os.path.dirname(__file__))[0])[0]
 
 
 class Hierarchical(QgisAlgorithm):
 
-    INPUT = 'INPUT_POINTS'
+    INPUT = 'INPUT_LAYER'
+    V_OPTIONS = 'V_OPTIONS'
     LINKAGE = 'LINKAGE'
     HARCHIPARAM = 'HARCHIPARAM'
-    CLUSTER_METHOD = 'CLUSTER_METHOD'
-    MAX_K = 'MAX_K'
-    THRESHOLD = 'THRESHOLD'
-    DEPTH= 'DEPTH'
     OUTPUT = 'OUTPUT'
 	
     def icon(self):
@@ -86,55 +84,49 @@ class Hierarchical(QgisAlgorithm):
 
     def initAlgorithm(self, config=None):
         self.addParameter(QgsProcessingParameterFeatureSource(self.INPUT,
-                                                              self.tr(u'Point Layer'),
-                                                              [QgsProcessing.TypeVectorPoint]))
+                                                              self.tr(u'Input Layer'),
+                                                              [QgsProcessing.TypeVector]))
+        variable_param = ParameterVariable(self.V_OPTIONS, self.tr(u'Variable Fields'), layer_param=self.INPUT)
+        variable_param.setMetadata({'widget_wrapper': {'class': 'spatial_analysis.forms.VariableWidget.VariableWidgetWrapper'}})
+        self.addParameter(variable_param)
         self.dMethod = ['centroid', 'ward', 'single', 'complete', 'average']
         self.addParameter(QgsProcessingParameterEnum(self.LINKAGE,
                                                         self.tr('Linkage(Distance) Method'),
                                                         defaultValue  = 0,
                                                         options = self.dMethod))
-        harchi_param = ParameterHarchi(self.HARCHIPARAM, self.tr(u'Choose Graph Type'), layer_param=self.INPUT, linkage_param=self.LINKAGE)
+        harchi_param = ParameterHarchi(self.HARCHIPARAM, self.tr(u'Clustering by'), layer_param=self.INPUT, variable_options=self.V_OPTIONS, linkage_param=self.LINKAGE)
         harchi_param.setMetadata({'widget_wrapper': {'class': 'spatial_analysis.forms.Harchi.HarchiWidgetWrapper'}})
-        harchi_param.setFlags(harchi_param.flags() | QgsProcessingParameterDefinition.FlagAdvanced)
         self.addParameter(harchi_param)
-
-        self.cMethod = [u'Cluster Numbers(User Defined)', u'Distance Based(Cut Tree)']
-        self.addParameter(QgsProcessingParameterEnum(self.CLUSTER_METHOD,
-                                                       self.tr('Cluster Method'),
-                                                       defaultValue  = 0,
-                                                       options = self.cMethod))
-        self.addParameter(QgsProcessingParameterNumber(self.MAX_K,
-                                                       self.tr(u' ▶ Cluster Number - Incase of *Cluster Numbers*'),
-                                                       QgsProcessingParameterNumber.Integer,
-                                                       3, False, 2, 99999999))
-        self.addParameter(QgsProcessingParameterNumber(self.THRESHOLD,
-                                                       self.tr(u' ▶ Distance - Incase of *Distance Based*'),
-                                                       QgsProcessingParameterNumber.Double,
-                                                       0, False, 0, 99999999))
         self.addParameter(QgsProcessingParameterFeatureSink(self.OUTPUT, 
                                                             self.tr('Output Layer with H_Clusters'),
-                                                            QgsProcessing.TypeVectorPoint))
+                                                            QgsProcessing.TypeVector))
     def processAlgorithm(self, parameters, context, feedback):
         feedback.pushInfo(self.tr("Starting Algorithm: '{}'".format(self.displayName())))
         cLayer = self.parameterAsSource(parameters, self.INPUT, context)
+        to_cluster, variable_fields, normalized = self.parameterAsMatrix(parameters, self.V_OPTIONS, context)
         dMethodIndex = self.parameterAsEnum(parameters, self.LINKAGE, context)
-        cMethodIndex = self.parameterAsEnum(parameters, self.CLUSTER_METHOD, context)
-        if cMethodIndex == 0:
+        harchi_param = self.parameterAsMatrix(parameters, self.HARCHIPARAM, context)
+        if harchi_param[0] == 0:
             criterion = 'maxclust'
-            threshold = self.parameterAsInt(parameters, self.MAX_K, context)
         else:
             criterion = 'distance'
-            threshold = self.parameterAsDouble(parameters, self.THRESHOLD, context)
+        threshold = harchi_param[1]
 
-        ## get coordinates of point features
-        pts=[f.geometry().asPoint() for f in cLayer.getFeatures()]            
-        x=[pt[0] for pt in pts]
-        y=[pt[1] for pt in pts]
-        coords = np.stack([x, y], axis = -1)
+        # input --> numpy array
+        if to_cluster == 'geom':
+            features = [[f.geometry().centroid().asPoint().x(), f.geometry().centroid().asPoint().y()] for f in cLayer.getFeatures()]
+            features = np.stack(features, axis = 0)
+        else:
+            features = [[f[fld] for f in cLayer.getFeatures()] for fld in variable_fields]
+            features = np.stack(features, axis = 1)
+        if normalized:
+            features = whiten(features)
+            if_normalized = "Yes"
+        else:
+            if_normalized = "No"
 		
         ## perform hierarchical clustering and get centers of clusters
-        Z = linkage(coords, method = self.dMethod[dMethodIndex], metric = 'euclidean')
-        # cluster = fcluster(Z, t = threshold, criterion = self.cMethod[cMethodIndex])
+        Z = linkage(features, method = self.dMethod[dMethodIndex], metric = 'euclidean')
         cluster = fcluster(Z, t = threshold, criterion = criterion)
         feedback.pushInfo("End of Algorithm")
         feedback.pushInfo("Building Layers")
@@ -147,7 +139,7 @@ class Hierarchical(QgisAlgorithm):
         fields = QgsProcessingUtils.combineFields(fields, new_fields)
         (cluster_sink, cluster_dest_id) = self.parameterAsSink(parameters, self.OUTPUT, context,
                                           fields, cLayer.wkbType(), cLayer.sourceCrs())
-        total = len(coords)
+        total = len(features)
         for i, feat in enumerate(cLayer.getFeatures()):
             outFeat = feat
             attrs = feat.attributes()

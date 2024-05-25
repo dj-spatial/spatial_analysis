@@ -45,7 +45,6 @@ from qgis.core import (QgsField,
 from processing.algs.qgis.QgisAlgorithm import QgisAlgorithm
 from spatial_analysis.forms.DbscanKnnParam import ParameterKnn
 import processing
-
 import numpy as np
 
 pluginPath = os.path.split(os.path.split(os.path.dirname(__file__))[0])[0]
@@ -92,9 +91,8 @@ class Dbscan(QgisAlgorithm):
                                                        self.tr(u'Minimum Cluster Size(minPts)'),
                                                        QgsProcessingParameterNumber.Integer,
                                                        3, False, 2, 99999999))
-        knn_param = ParameterKnn(self.KNN, self.tr(u'K Nearest Neighbor Distance'), layer_param=self.INPUT, k_param=self.MINPOINTS)
+        knn_param = ParameterKnn(self.KNN, self.tr(u'<hr>Epsilon Distance to K Nearest Neighbors'), layer_param=self.INPUT, k_param=self.MINPOINTS)
         knn_param.setMetadata({'widget_wrapper': {'class': 'spatial_analysis.forms.DbscanKnn.KnnWidgetWrapper'}})
-        knn_param.setFlags(knn_param.flags() | QgsProcessingParameterDefinition.FlagAdvanced)
         self.addParameter(knn_param)                                                      
         self.addParameter(QgsProcessingParameterFeatureSink(self.OUTPUT, 
                                                             self.tr('Output Layer with DBSCAN'),

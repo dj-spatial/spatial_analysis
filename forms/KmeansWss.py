@@ -32,12 +32,12 @@ from processing.tools import dataobjects
 import os
 import tempfile
 import numpy as np
-from scipy.cluster.vq import kmeans,vq
+from scipy.cluster.vq import kmeans, whiten, vq
 import plotly
 import plotly as plt
 import plotly.graph_objs as go
 from qgis.PyQt import uic
-from qgis.core import Qgis, QgsMessageLog, QgsNetworkAccessManager, QgsProject 
+from qgis.core import Qgis, QgsMessageLog, QgsNetworkAccessManager, QgsProcessingUtils 
 from qgis.gui import QgsMessageBar
 from PyQt5.QtCore import QDate
 from qgis.PyQt.QtWidgets import QVBoxLayout
@@ -73,35 +73,44 @@ class WssWidget(BASE, WIDGET):
         self.wssBtn.clicked.connect(self.plotView)
         self.browserBtn.clicked.connect(self.browserVeiw)
 
-    def getWss(self):
-        cLayer =  QgsProject.instance().mapLayer(self.vid)
-        if cLayer is None:
-            msg = u'No Layer Selected'
-            return msg
+    def setSource(self, source):
+        if not source:
+            return
+        self.source = source
 
-        # get coordinates of point features
-        pts=[f.geometry().asPoint() for f in cLayer.getFeatures()]            
-        x=[pt[0] for pt in pts]
-        y=[pt[1] for pt in pts]
-        coords = np.stack([x, y], axis = -1)
-        if self.maxK > len(coords):
+    def setOptions(self, options):
+        self.options = options
+
+    def getWss(self):
+        cLayer =  self.source
+        to_cluster, variable_fields, normalized = self.options
+        maxK = self.maxK.value()
+        # input --> numpy array
+        if to_cluster == 'geom':
+            features = [[f.geometry().centroid().asPoint().x(), f.geometry().centroid().asPoint().y()] for f in cLayer.getFeatures()]
+            features = np.stack(features, axis = 0)
+        else:
+            features = [[f[vf] for f in cLayer.getFeatures()] for vf in variable_fields]
+            features = np.stack(features, axis = 1)
+
+        if normalized:
+            features = whiten(features)
+        if maxK > features.shape[0]:
             msg = u'Clusters should be less than feature count.'
             return msg
-
-        # get wss for each cluster size
+            
         wss = []
-        for i in range(1, self.maxK+1):
-            centroids,_ = kmeans(coords, i)  
-            cluster, distance = vq(coords, centroids)
-            wss.append(sum(distance**2))
-
+        for i in range(0, maxK):
+            codebook = kmeans(features, i+1)[0]
+            distortion = vq(features, codebook)[1]
+            wss.append(np.sum(distortion**2))
         diff = np.diff(wss)
         diff = np.append(0, -diff)
         diff_ratio = diff / wss[0] * 100
         diff_ratio = [("%0.1f"%i+"%") for i in diff_ratio]
 
         #그래프
-        x_range = [i for i in range(1, self.maxK+1)]
+        x_range = [i for i in range(1, maxK+1)]
         x_axis = {
             'title': 'Clusters(K)',
             'dtick': 1,
@@ -126,29 +135,34 @@ class WssWidget(BASE, WIDGET):
             'mirror':False
         }
         wssHover = ['K = ' + str(k) + '<br>' + 'WSS = ' + '{0:,.0f}'.format(w) for k, w in zip(x_range, wss)]
-        trace0 = go.Bar(
+        
+        trace0 = go.Scatter(
             x=x_range[1:],
             y=wss[1:],
-            marker=dict(color='white', line=dict(width=1, color='gray')),
             text=wssHover[1:],
+            mode="lines+markers",
+            line=dict(color='orange'),
+            marker=dict(color='white', size=10, line=dict(color='orange', width=2)),
+            textposition='top center',
             hoverinfo='text',
             name='WSS'
         )
-        trace1 = go.Scatter(
+        trace1 = go.Bar(
             x=x_range[1:],
             y=diff[1:],
             text=diff_ratio[1:],
             hoverinfo='none',
-            mode="lines+markers+text",
-            textposition='top center',
-            name='Decline Rate'
+            marker=dict(color='white', line=dict(width=1, color='gray')),
+            textposition='outside',
+            name='ΔWSS÷TSS'
         )
+
         data = [trace0, trace1]
         layout = {
-            'plot_bgcolor': 'gray',
+            'plot_bgcolor': 'white',
             'hovermode': 'closest',
             'hoverlabel': dict(font=dict(color='black')),
-            'legend': dict(x=0.90, y=1, borderwidth = 0, orientation='v', traceorder='normal', tracegroupgap = 5, font={'size':12}),
+            'legend': dict(x=0.8, y=1, borderwidth = 0, orientation='v', traceorder='normal', tracegroupgap = 5, font={'size':12}),
             'showlegend': True,
             'xaxis1': dict(x_axis, **dict(domain=[0.0, 1.0], anchor='y1')),
             'yaxis1': dict(y_axis, **dict(domain=[0.0, 1.0], anchor='x1')),
@@ -180,15 +194,12 @@ class WssWidget(BASE, WIDGET):
             QMessageBox.information(self, u"Input Error", msg)
         else:
             plt.offline.plot(self.fig, filename = os.path.join(tempfile.gettempdir(), 'wss'+'.html') , auto_open=True)
-        
-    def setLayer(self, layer):
-        self.vid = layer
-        
-    def setMax(self, k):
-        self.maxK = k
+
+    def setValue(self, value):
+        return True
 
     def value(self):
-        return [1]
+        return 1
 
 class WssWidgetWrapper(WidgetWrapper):
 
@@ -208,23 +219,27 @@ class WssWidgetWrapper(WidgetWrapper):
             return
         for wrapper in wrappers:
             if wrapper.parameterDefinition().name() == self.param.layer_param:
-                self.setLayer(wrapper.parameterValue())
+                self.setSource(wrapper.parameterValue())
                 wrapper.widgetValueHasChanged.connect(self.layerChanged)
-            elif wrapper.parameterDefinition().name() == self.param.max_param:
-                self.setMax(wrapper.parameterValue())
-                wrapper.widgetValueHasChanged.connect(self.maxChanged)
+            elif wrapper.parameterDefinition().name() == self.param.variable_options:
+                self.setOptions(wrapper.parameterValue())
+                wrapper.widgetValueHasChanged.connect(self.optionsChanged)
 
     def layerChanged(self, wrapper):
-        self.setLayer(wrapper.parameterValue())
+        self.setSource(wrapper.parameterValue())
 
-    def setLayer(self, layer):
-        self.widget.setLayer(layer)
+    def setSource(self, source):
+        source = QgsProcessingUtils.variantToSource(source, self.context)
+        self.widget.setSource(source)
 
-    def maxChanged(self, wrapper):
-        self.setMax(wrapper.parameterValue())
+    def optionsChanged(self, wrapper):
+        self.setOptions(wrapper.parameterValue())
 
-    def setMax(self, k):
-        self.widget.setMax(k)
+    def setOptions(self, options):
+        self.widget.setOptions(options)
+
+    def setValue(self, value):
+        return self.widget.setValue(value)
 
     def value(self):
         return self.widget.value()

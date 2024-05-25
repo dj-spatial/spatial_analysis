@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>469</width>
-    <height>531</height>
+    <width>545</width>
+    <height>526</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -32,21 +32,63 @@
    <property name="verticalSpacing">
     <number>3</number>
    </property>
-   <item row="0" column="1">
-    <widget class="QPushButton" name="browserBtn">
-     <property name="text">
-      <string>On Browser</string>
-     </property>
-    </widget>
-   </item>
-   <item row="0" column="0">
+   <item row="2" column="5">
     <widget class="QPushButton" name="wssBtn">
      <property name="text">
-      <string>On Panel</string>
+      <string>View</string>
      </property>
     </widget>
    </item>
-   <item row="1" column="0" colspan="2">
+   <item row="2" column="3">
+    <widget class="QSpinBox" name="maxK">
+     <property name="minimumSize">
+      <size>
+       <width>50</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="buttonSymbols">
+      <enum>QAbstractSpinBox::UpDownArrows</enum>
+     </property>
+     <property name="suffix">
+      <string/>
+     </property>
+     <property name="prefix">
+      <string/>
+     </property>
+     <property name="minimum">
+      <number>2</number>
+     </property>
+     <property name="maximum">
+      <number>9999999</number>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="6">
+    <widget class="QPushButton" name="browserBtn">
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>20</height>
+      </size>
+     </property>
+     <property name="text">
+      <string/>
+     </property>
+     <property name="icon">
+      <iconset>
+       <normaloff>../icons/browser.svg</normaloff>../icons/browser.svg</iconset>
+     </property>
+    </widget>
+   </item>
+   <item row="2" column="2">
+    <widget class="QLabel" name="label">
+     <property name="text">
+      <string>Maximum Clusters </string>
+     </property>
+    </widget>
+   </item>
+   <item row="6" column="1" colspan="7">
     <widget class="QWidget" name="wss_panel" native="true">
      <property name="enabled">
       <bool>true</bool>
@@ -62,6 +104,35 @@
 border-color: rgb(255, 255, 255);</string>
      </property>
     </widget>
+   </item>
+   <item row="2" column="4">
+    <spacer name="horizontalSpacer">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="sizeType">
+      <enum>QSizePolicy::Fixed</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>5</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item row="2" column="7">
+    <spacer name="horizontalSpacer_2">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>40</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
    </item>
   </layout>
  </widget>

@@ -28,15 +28,14 @@ __copyright__ = '(C) 2019, D.J Paek'
 __revision__ = '$Format:%H$'
 
 import os
-
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QIcon
-
 from qgis.core import (QgsProcessingParameterBoolean,
                        QgsExpression,
                        QgsFeatureRequest,
                        QgsField,
                        QgsFields,
+                       QgsPointXY,
                        QgsFeatureSink,
                        QgsProcessing,
                        QgsProcessingParameterField,
@@ -173,12 +172,13 @@ class CentralTendency(QgisAlgorithm):
                     pointCoords = getPointCoords(feat, weightFieldIndex)
                     medianCenterFeat = getMedianCenter(pointCoords[0], pointCoords[1], pointCoords[2], 1)
                     sink_median.addFeature(medianCenterFeat, QgsFeatureSink.FastInsert)
+                results[self.OUTPUT_MEDIAN] = median_id
             else:
                 feat = cLayer.getFeatures()
                 pointCoords = getPointCoords(feat, weightFieldIndex)
                 medianCenterFeat = getMedianCenter(pointCoords[0], pointCoords[1], pointCoords[2], 1)
-                sink_median.addFeature(medianCenterFeat, QgsFeatureSink.FastInsert)
-            results[self.OUTPUT_MEDIAN] = median_id
+                sink_median.addFeature(medianCenterFeat, QgsFeatureSink.FastInsert)   
+            results[self.OUTPUT_MEDIAN] = median_id                    
 
         if  centralFeature:
             (sink_central, central_id) = self.parameterAsSink(parameters, self.OUTPUT_CENTRAL, context,

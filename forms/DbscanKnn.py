@@ -37,7 +37,7 @@ import plotly
 import plotly as plt
 import plotly.graph_objs as go
 from qgis.PyQt import uic
-from qgis.core import QgsNetworkAccessManager, QgsProject 
+from qgis.core import QgsNetworkAccessManager, QgsProject, QgsProcessingUtils
 from qgis.PyQt.QtWidgets import QVBoxLayout
 from qgis.PyQt.QtWebKit import QWebSettings
 from qgis.PyQt.QtWebKitWidgets import QWebView
@@ -70,26 +70,27 @@ class KnnWidget(BASE, WIDGET):
         self.knnBtn.clicked.connect(self.plotView)
         self.browserBtn.clicked.connect(self.browserVeiw)
 
-    def getKnn(self):
-        cLayer =  QgsProject.instance().mapLayer(self.vid)
-        if cLayer is None:
-            msg = u'Layer failed to load!'
-            return msg
+    def setSource(self, source):
+        if not source:
+            return
+        self.source = source
 
-        # get coordinates of point features
-        pts=[f.geometry().asPoint() for f in cLayer.getFeatures()]            
-        x=[pt[0] for pt in pts]
-        y=[pt[1] for pt in pts]
-        coords = np.stack([x, y], axis = -1)
-        if self.K > len(coords):
+    def getKnn(self):
+        cLayer =  self.source
+
+        # input --> numpy array
+        features = [[f.geometry().centroid().asPoint().x(), f.geometry().centroid().asPoint().y()] for f in cLayer.getFeatures()]
+        features = np.stack(features, axis = 0)
+
+        if self.K > len(features):
             msg = u'More clusters than feature counts.'
             return msg
 
         ## get distance tree
-        tree = KDTree(coords)
+        tree = KDTree(features)
 
         ## distance and index of k nearest neighbors from each point
-        dist, idx = tree.query(coords, self.K+1)
+        dist, idx = tree.query(features, self.K+1)
         knndist = dist[:, self.K]
 
         knndist = np.sort(knndist)
@@ -131,7 +132,6 @@ class KnnWidget(BASE, WIDGET):
             'mirror':False
         }
         layout = {
-            'plot_bgcolor': 'black',
             'hovermode': 'closest',
             'hoverlabel': dict(font=dict(color='black')),
             'legend': dict(x=0.80, y=1, borderwidth = 0, orientation='v', traceorder='normal', tracegroupgap = 5, font={'size':12}),
@@ -168,9 +168,6 @@ class KnnWidget(BASE, WIDGET):
         else:
             plt.offline.plot(self.fig, filename = os.path.join(tempfile.gettempdir(), 'knn'+'.html') , auto_open=True)
         
-    def setLayer(self, layer):
-        self.vid = layer
-        
     def setK(self, k):
         self.K = k
 
@@ -195,23 +192,27 @@ class KnnWidgetWrapper(WidgetWrapper):
             return
         for wrapper in wrappers:
             if wrapper.parameterDefinition().name() == self.param.layer_param:
-                self.setLayer(wrapper.parameterValue())
+                self.setSource(wrapper.parameterValue())
                 wrapper.widgetValueHasChanged.connect(self.layerChanged)
             elif wrapper.parameterDefinition().name() == self.param.k_param:
                 self.setK(wrapper.parameterValue())
                 wrapper.widgetValueHasChanged.connect(self.kChanged)
 
     def layerChanged(self, wrapper):
-        self.setLayer(wrapper.parameterValue())
+        self.setSource(wrapper.parameterValue())
 
-    def setLayer(self, layer):
-        self.widget.setLayer(layer)
+    def setSource(self, source):
+        source = QgsProcessingUtils.variantToSource(source, self.context)
+        self.widget.setSource(source)
 
     def kChanged(self, wrapper):
         self.setK(wrapper.parameterValue())
 
     def setK(self, k):
         self.widget.setK(k)
+        
+    def setValue(self, value):
+        return self.widget.setValue(value)
 
     def value(self):
         return self.widget.value()

@@ -9,7 +9,7 @@
         begin                : 2018-05-05
         git sha              : $Format:%H$
         copyright            : (C) 2018 by D.J Paek
-        email                : 1002jeen@daum.net
+        email                : dj.paek1@gmail.com
  ***************************************************************************/
 
 /***************************************************************************
@@ -24,13 +24,11 @@
 
 from qgis.core import QgsProcessingParameterMatrix
 
-class ParameterHarchi(QgsProcessingParameterMatrix):
-    def __init__(self, name='', description='', layer_param=None, variable_options=None, linkage_param=None, default=None, optional=False):
+class ParameterVariable(QgsProcessingParameterMatrix):
+    def __init__(self, name='', description='', layer_param=None):
         QgsProcessingParameterMatrix.__init__(self, name, description)
         self.layer_param = layer_param
-        self.variable_options = variable_options
-        self.linkage_param = linkage_param
 
     def clone(self):
-        copy = ParameterHarchi(self.name(), self.description(), self.layer_param, self.variable_options, self.linkage_param)
+        copy = ParameterVariable(self.name(), self.description(), self.layer_param)
         return copy

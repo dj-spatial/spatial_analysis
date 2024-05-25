@@ -9,7 +9,7 @@
         begin                : 2018-05-05
         git sha              : $Format:%H$
         copyright            : (C) 2018 by D.J Paek
-        email                : 1002jeen@daum.net
+        email                : dj.paek1@gmail.com
  ***************************************************************************/
 
 /***************************************************************************
@@ -22,14 +22,14 @@
  ***************************************************************************/
 """
 
-from qgis.core import QgsProcessingParameterMatrix
+from qgis.core import QgsProcessingParameterNumber
 
-class ParameterWss(QgsProcessingParameterMatrix):
-    def __init__(self, name='', description='', layer_param=None, max_param=None, default=None, optional=False):
-        QgsProcessingParameterMatrix.__init__(self, name, description)
+class ParameterWss(QgsProcessingParameterNumber):
+    def __init__(self, name='', description='', layer_param=None, variable_options=None, default=None, optional=False):
+        QgsProcessingParameterNumber.__init__(self, name, description)
         self.layer_param = layer_param
-        self.max_param = max_param
+        self.variable_options = variable_options
 
     def clone(self):
-        copy = ParameterWss(self.name(), self.description(), self.layer_param, self.max_param)
+        copy = ParameterWss(self.name(), self.description(), self.layer_param, self.variable_options)
         return copy

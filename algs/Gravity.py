@@ -37,6 +37,7 @@ from qgis.core import (QgsExpression,
                        QgsProcessingException,
                        QgsFeatureRequest,
                        QgsRasterFileWriter,
+                       QgsProcessingContext,
                        QgsProcessingParameterExtent,
                        QgsProcessingParameterDistance,
                        QgsProcessingParameterCrs,
@@ -104,11 +105,11 @@ class Gravity(QgisAlgorithm):
         self.addParameter(QgsProcessingParameterNumber(self.NROWS,
                                                        self.tr(u'Rows'),
                                                        QgsProcessingParameterNumber.Integer,
-                                                       10, False, 2, 1500))
+                                                       100, False, 2, 1500))
         self.addParameter(QgsProcessingParameterNumber(self.NCOLS,
                                                        self.tr(u'Columns'),
                                                        QgsProcessingParameterNumber.Integer,
-                                                       10, False, 2, 1500))
+                                                       100, False, 2, 1500))
         self.addParameter(QgsProcessingParameterNumber(self.DISTANCE_FRICTION,
                                                        self.tr(u'Distance Friction'),
                                                        QgsProcessingParameterNumber.Double,
@@ -116,14 +117,28 @@ class Gravity(QgisAlgorithm):
         self.addParameter(QgsProcessingParameterField(self.ATTRACTION_FIELDS,
                                                       self.tr(u'Attraction Field'),
                                                       parentLayerParameterName=self.INPUT_POINTS,
-                                                      type=QgsProcessingParameterField.Any,
+                                                      type=QgsProcessingParameterField.Numeric,
                                                       allowMultiple = True))
+        class ParameterAttraction(QgsProcessingParameterMatrix):
+            def __init__(self, name='', description='', fields_param=None, default=None, optional=False):
+                QgsProcessingParameterMatrix.__init__(self, name, description)
+                self.fields_param = fields_param
+
+            def clone(self):
+                copy = ParameterAttraction(self.name(), self.description(), self.fields_param)
+                return copy
+
+        attraction_param = ParameterAttraction(self.ATTRACTION_FACTORS, self.tr(u'Attraction Factors'), fields_param=self.ATTRACTION_FIELDS)
+        attraction_param.setMetadata({'widget_wrapper': {'class': 'spatial_analysis.forms.GravityAttraction.AttractionWidgetWrapper'}})
+        self.addParameter(attraction_param)
+
+        '''
         self.addParameter(QgsProcessingParameterMatrix(self.ATTRACTION_FACTORS,
                                                        self.tr(u'Attraction Factor(should be the same order of "Attraction Field")'),
                                                        numberRows = 1, 
                                                        headers=['Attraction Factor'],
                                                        defaultValue=[1]))
-
+        '''
         self.addParameter(QgsProcessingParameterRasterDestination(self.OUTPUT, self.tr('Gravity Raster')))
 
     def processAlgorithm(self, parameters, context, feedback):
@@ -132,8 +147,6 @@ class Gravity(QgisAlgorithm):
         nCols = self.parameterAsInt(parameters, self.NCOLS, context)
         nRows = self.parameterAsInt(parameters, self.NROWS, context)
         analysisCrs = context.project().crs()
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(int(re.sub('EPSG:', '', analysisCrs.authid())))
         bbox = self.parameterAsExtent(parameters, self.EXTENT, context, analysisCrs)
 
         distanceFriction = self.parameterAsDouble(parameters, self.DISTANCE_FRICTION, context)
@@ -145,18 +158,22 @@ class Gravity(QgisAlgorithm):
                 self.tr('Attraction Field(s){0} should match Attraction Factor{1}').format(attrNames, attrParams))
 
         output_path = self.parameterAsOutputLayer(parameters, self.OUTPUT, context)
-        outputFile = self.parameterAsOutputLayer(parameters, self.OUTPUT, context)
-        output_format = QgsRasterFileWriter.driverForExtension(os.path.splitext(outputFile)[1])		
         xcoords = np.empty((1, nCols))
-        ycoords = np.empty((nRows, 1))		
+        ycoords = np.empty((nRows, 1))
+
+        #create a raster
+        driver = gdal.GetDriverByName('GTiff')
+        output_raster = driver.Create(output_path, xsize=nCols, ysize=nRows, bands=len(cLayer), eType=gdal.GDT_Float32)
+
         xres = (bbox.xMaximum()-bbox.xMinimum())/float(nCols)
         yres = (bbox.yMaximum()-bbox.yMinimum())/float(nRows)
         originX = [] 
         originY = [] 
-        huff = []
 
         #create a grid
         feedback.pushInfo(self.tr(u'Creating a grid...'))
+        feedback.pushInfo(self.tr(output_path))
+
         nxm = nCols + nRows
         for nCol in range(0, nCols):
             xcoords[:,nCol] = (bbox.xMinimum()+xres/2) + (nCol * xres)
@@ -190,12 +207,6 @@ class Gravity(QgisAlgorithm):
             feedback.setProgress(int(j / total * 100))
         feedback.setProgress(0)
 
-        #create a raster
-        geotransform=(bbox.xMinimum(),xres,0,bbox.yMaximum(),0, -yres)
-        output_raster = gdal.GetDriverByName('GTiff').Create(output_path, nCols, nRows, len(cLayer) ,gdal.GDT_Float32)
-        output_raster.SetGeoTransform(geotransform)  # Specify its coordinates
-        output_raster.SetProjection(srs.ExportToWkt())   # Exports the coordinate system 
-
         #Huff Probability
         feedback.pushInfo(self.tr(u'Huff Probability...'))
         p_huff = []
@@ -204,7 +215,14 @@ class Gravity(QgisAlgorithm):
             p_huff.append(p) 
             output_raster.GetRasterBand(k+1).WriteArray(p)
             feedback.setProgress(int(k / total * 100))
+
+        geotransform=(bbox.xMinimum(), xres, 0, bbox.yMaximum(),0, -yres)
+        output_raster.SetGeoTransform(geotransform)  # Specify its coordinates
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(int(re.sub('EPSG:', '', analysisCrs.authid())))
+        output_raster.SetProjection(srs.ExportToWkt())   # Exports the coordinate system 
         output_raster.FlushCache()
+        output_raster = None
 
         results = {}
         results[self.OUTPUT] = output_path
