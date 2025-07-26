@@ -75,6 +75,9 @@ class HarchiWidget(BASE, WIDGET):
         self.chart_id = 0
         self.cluster_method = 0
 
+        # initial threshold
+        self.init_threshold = True
+
         # Connect signals
         self.plotBtn.clicked.connect(self.plotView)
         self.browserBtn.clicked.connect(self.browserView)
@@ -85,22 +88,29 @@ class HarchiWidget(BASE, WIDGET):
         if not source:
             return
         self.source = source
+        self.init_threshold = True
 
     def setOptions(self, options):
         self.options = options
+        self.init_threshold = True
         
     def setLinkage(self, linkage):
         self.linkageIdx = linkage
+        self.init_threshold = True
 
     def chart_type(self):
         self.labelCB.setEnabled(False)
+        self.doubleSpinBox.setEnabled(False)
         if self.dendrogramRB.isChecked():
             self.labelCB.setEnabled(True)
+            self.doubleSpinBox.setEnabled(True)
             self.chart_id = 0 
         elif self.correlationRB.isChecked():
             self.chart_id = 1
         elif self.distanceRB.isChecked():
             self.chart_id = 2
+        elif self.distributionRB.isChecked():
+            self.chart_id = 3
 
     def fillLabel(self):
         cLayer =  self.source
@@ -140,13 +150,35 @@ class HarchiWidget(BASE, WIDGET):
             features = whiten(features)
 
         dMethod = ['centroid', 'ward', 'single', 'complete', 'average']
+
         if self.chart_id == 0:
             Z = linkage(features, dMethod[self.linkageIdx], metric = 'euclidean')
             ddata = dendrogram(Z)
-            
+            dists = Z[:, 2]
+            diffs = np.diff(dists)
+            jump_idx = np.argmax(diffs)
+            if self.init_threshold:
+                threshold_jump = (dists[jump_idx] + dists[jump_idx + 1]) / 2
+                self.doubleSpinBox.setValue(threshold_jump)
+                self.init_threshold = False
+            else:
+                threshold_jump = self.doubleSpinBox.value()
+
             labels=[f.attributes()[self.labelCB.currentIndex()] for f in cLayer.getFeatures()]
-            hText=list(Z[:,2])
+            hText=list(dists)
             dendro = ff.create_dendrogram(features, linkagefun = lambda x : Z, orientation = 'bottom', labels = labels, hovertext = ddata['dcoord'])
+
+            # 수평선 추가 (임계 거리 표시)
+            dendro.add_shape(
+                type='line',
+                x0=0,
+                x1=1,
+                y0=threshold_jump,
+                y1=threshold_jump,
+                line=dict(color='red', width=2, dash='dash'),
+                xref='paper',
+                yref='y'
+            )
 
             #그래프
             dendro['layout'].update({'autosize': True, 'plot_bgcolor': 'white', 'title' : 'Dendrogram by ' + dMethod[self.linkageIdx] + ' method' })
@@ -164,17 +196,19 @@ class HarchiWidget(BASE, WIDGET):
             self.fig = {'data' : dendro}
         elif self.chart_id == 1:
             #Cophenet Correlation
-            cophenet_corr = []
+            cophenet_corr_raw = []
             for m in dMethod:
                 Z = linkage(features, method = m, metric = 'euclidean')
                 c,_ = cophenet(Z, pdist(features))
-                cophenet_corr.append(c)
-            cophenet_corr = [("%0.3f"%i) for i in cophenet_corr]
+                cophenet_corr_raw.append(c)
+                
+            cophenet_corr_text  = [("%0.3f"%i) for i in cophenet_corr_raw]
+            
             trace0 = go.Bar(
                 x=dMethod,
-                y=cophenet_corr,
+                y=cophenet_corr_raw,
                 marker=dict(color='white', line=dict(width=1, color='navy')),
-                text=cophenet_corr,
+                text=cophenet_corr_text,
                 textposition='outside',
                 hoverinfo='text',
                 name=u'Cophenet Correlation'
@@ -185,7 +219,7 @@ class HarchiWidget(BASE, WIDGET):
                 xaxis = dict(title='Linkage Method')
             )
             self.fig = go.Figure(data = data, layout = layout)
-        else:
+        elif self.chart_id == 2:
             #Cophenet Distance
             revDiff = [0]
             Z = linkage(features, method = dMethod[self.linkageIdx], metric = 'euclidean')
@@ -202,6 +236,7 @@ class HarchiWidget(BASE, WIDGET):
                 y=revDiff,
                 marker=dict(color='white', line=dict(width=1, color='navy')),
                 text=diffHover,
+                textposition='none',
                 hoverinfo='text',
                 name='Distance Decline'
             )
@@ -269,9 +304,38 @@ class HarchiWidget(BASE, WIDGET):
             }
             data = [trace0, trace1]
             self.fig = go.Figure(data = data, layout = layout)
+
+        elif self.chart_id == 3:
+            #Cophenet Distibution
+
+            Z = linkage(features, method = dMethod[self.linkageIdx], metric = 'euclidean')
+            
+            # 실제 거리 및 cophenetic 거리 계산
+            original_dist = pdist(features)
+            coph_corr, coph_dist = cophenet(Z, original_dist)
+
+
+            trace0 = go.Histogram(
+                x=coph_dist,
+                marker=dict(color='white', line=dict(width=1, color='navy')),
+                hovertemplate='구간 중심: %{x:.2f}<br>' + '빈도: %{y:.0f}<extra></extra>'
+                # text=diffHover,
+                # textposition='none',
+                # hoverinfo='text',
+                # name='Distance Decline'
+            )
+
+            layout = {
+                'title': 'Cophenetic Distance Distribution',
+                'xaxis_title': 'Cophenetic Distance',
+                'yaxis_title': 'Frequency'
+            }
+            data = [trace0]
+            self.fig = go.Figure(data = data, layout = layout)
+
         msg = 'Success'
         return msg
-        
+
     def plotView(self):
         msg = self.getHarchi()
         if  msg != 'Success':
@@ -303,7 +367,7 @@ class HarchiWidget(BASE, WIDGET):
             threshold = self.cluster_num.value()
         else:
             threshold = self.cophenet.value()
-        return [self.cluster_method, threshold]
+        return [self.cluster_method, threshold, self.cophenet.value()]
 
 class HarchiWidgetWrapper(WidgetWrapper):
 

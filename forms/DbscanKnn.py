@@ -43,6 +43,7 @@ from qgis.PyQt.QtWebKit import QWebSettings
 from qgis.PyQt.QtWebKitWidgets import QWebView
 from qgis.PyQt.QtCore import QUrl
 from PyQt5.QtWidgets import QMessageBox
+from .DbscanDialog import ParameterControlDialog
 
 pluginPath = os.path.dirname(__file__)
 WIDGET, BASE = uic.loadUiType(
@@ -166,7 +167,10 @@ class KnnWidget(BASE, WIDGET):
         if  msg != 'Success':
             QMessageBox.information(self, u"Input Error", msg)
         else:
-            plt.offline.plot(self.fig, filename = os.path.join(tempfile.gettempdir(), 'knn'+'.html') , auto_open=True)
+            # plt.offline.plot(self.fig, filename = os.path.join(tempfile.gettempdir(), 'knn'+'.html') , auto_open=True)
+            dialog = ParameterControlDialog(self.source)
+            dialog.exec_()
+
         
     def setK(self, k):
         self.K = k
