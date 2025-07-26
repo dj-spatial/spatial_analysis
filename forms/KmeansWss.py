@@ -98,18 +98,12 @@ class WssWidget(BASE, WIDGET):
         if maxK > features.shape[0]:
             msg = u'Clusters should be less than feature count.'
             return msg
-
-        lists = []
-        for i in range(0, 20):
-            wss_j = []
-            for j in range(0, maxK):
-                codebook = kmeans(features, j+1)[0]
-                distortion = vq(features, codebook)[1]
-                wss_j.append(np.sum(distortion**2))
-            lists.append(wss_j)
-        arr = np.array(lists)
-        wss = np.mean(arr, axis=0)
-
+            
+        wss = []
+        for i in range(0, maxK):
+            codebook = kmeans(features, i+1)[0]
+            distortion = vq(features, codebook)[1]
+            wss.append(np.sum(distortion**2))
         diff = np.diff(wss)
         diff = np.append(0, -diff)
         diff_ratio = diff / wss[0] * 100
