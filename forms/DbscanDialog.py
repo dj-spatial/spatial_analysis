@@ -1,80 +1,11 @@
 from qgis.core import *
-<<<<<<< Updated upstream
-=======
 from qgis import processing
 from qgis.utils import iface
->>>>>>> Stashed changes
 from qgis.gui import QgsRubberBand, QgsMapLayerComboBox
 from PyQt5.QtWidgets import QDialog, QVBoxLayout, QSlider, QLabel, QPushButton, QHBoxLayout, QSpinBox
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QColor, QPixmap
 import math, colorsys, matplotlib.pyplot as plt, tempfile
-<<<<<<< Updated upstream
-
-class Config:
-    min_points = 4
-    eps = None
-    cluster_field = 'CLUSTER_ID'
-    output_memory_id = 'memory:dbscan_result'
-    timer_interval = 200
-    alpha_step = 10
-    initial_alpha = 100
-    marker_size = '1.5'
-    eps_min = 1.0
-    eps_max = 10.0
-
-# 다이얼로그 정의
-class ParameterControlDialog(QDialog):
-    def __init__(self, layer: QgsVectorLayer, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("DBSCAN Parameters")
-        self.setMinimumWidth(400)
-        self.animator = None
-        self.layer = layer
-
-        Config.eps = self.compute_knn_kth_distance(Config.min_points)
-        self.compute_knn_kth_distance(Config.min_points, eps_for_ratio=Config.eps)
-
-        layout = QVBoxLayout()
-
-        self.minpts_label = QLabel(f"MinPts: {Config.min_points}")
-        layout.addWidget(self.minpts_label)
-        self.minpts_spin = QSpinBox()
-        self.minpts_spin.setMinimum(1)
-        self.minpts_spin.setMaximum(100)
-        self.minpts_spin.setValue(Config.min_points)	
-        self.minpts_spin.valueChanged.connect(self.update_minpts)
-        layout.addWidget(self.minpts_spin)
-
-        eps_text = f"{Config.eps:.2f}" if Config.eps is not None else "Not set"
-        self.eps_label = QLabel(f"Epsilon: {eps_text}")
-        layout.addWidget(self.eps_label)
-        self.eps_slider = QSlider(Qt.Horizontal)
-        self.eps_slider.setMinimum(int(Config.eps_min * 10))
-        self.eps_slider.setMaximum(int(Config.eps_max * 10))
-        self.eps_slider.setValue(int(Config.eps * 10) if Config.eps is not None else 10)
-        self.eps_slider.valueChanged.connect(self.update_eps)
-        layout.addWidget(self.eps_slider)
-
-        self.interval_label = QLabel("Interval: 200 ms")
-        layout.addWidget(self.interval_label)
-        self.interval_slider = QSlider(Qt.Horizontal)
-        self.interval_slider.setMinimum(10)
-        self.interval_slider.setMaximum(1000)
-        self.interval_slider.setValue(Config.timer_interval)
-        self.interval_slider.valueChanged.connect(self.update_speed)
-        layout.addWidget(self.interval_slider)
-
-        self.fill_alpha_label = QLabel("Fill Opacity: 2%")
-        layout.addWidget(self.fill_alpha_label)
-        self.fill_alpha_slider = QSlider(Qt.Horizontal)
-        self.fill_alpha_slider.setMinimum(0)
-        self.fill_alpha_slider.setMaximum(255)
-        self.fill_alpha_slider.setValue(5)
-        self.fill_alpha_slider.valueChanged.connect(self.update_alpha)
-        layout.addWidget(self.fill_alpha_slider)
-
-=======
 from PyQt5.QtCore import QTimer
 
 
@@ -165,7 +96,6 @@ class ParameterControlDialog(QDialog):
         self.control_widgets.append(self.fill_alpha_slider)
 
         # Buttons
->>>>>>> Stashed changes
         btns = QHBoxLayout()
         self.play_btn = QPushButton("▶ Play")
         self.pause_btn = QPushButton("⏸ Pause")
@@ -177,28 +107,6 @@ class ParameterControlDialog(QDialog):
         btns.addWidget(self.pause_btn)
         btns.addWidget(self.stop_btn)
         layout.addLayout(btns)
-<<<<<<< Updated upstream
-
-        self.plot_label = QLabel()
-        self.refresh_plot()
-        layout.addWidget(self.plot_label)
-
-        self.setLayout(layout)
-
-    def update_minpts(self, value):
-        Config.min_points = value
-        self.minpts_label.setText(f"MinPts: {value}")
-        Config.eps = self.compute_knn_kth_distance(Config.min_points)
-        self.eps_slider.setMinimum(int(Config.eps_min * 10))
-        self.eps_slider.setMaximum(int(Config.eps_max * 10))
-        self.eps_slider.setValue(int(Config.eps * 10))
-        self.eps_label.setText(f"Epsilon: {Config.eps:.2f}")
-        self.refresh_plot()
-
-    def update_eps(self, value):
-        Config.eps = value / 10.0
-        self.eps_label.setText(f"Epsilon: {Config.eps:.2f}")
-=======
         self.control_widgets.extend([self.play_btn, self.pause_btn, self.stop_btn])
 
         self.show_result_btn = QPushButton("DBSCAN Result")
@@ -291,18 +199,13 @@ class ParameterControlDialog(QDialog):
     def update_eps(self, value):
         self.eps = value / 10.0
         self.eps_label.setText(f"Epsilon: {self.eps:.2f}")
->>>>>>> Stashed changes
         self.refresh_plot()
 
     def refresh_plot(self):
         self.plot_label.setPixmap(self.get_elbow_pixmap())
 
     def update_speed(self, value):
-<<<<<<< Updated upstream
-        Config.timer_interval = value
-=======
         self.timer_interval = value
->>>>>>> Stashed changes
         self.interval_label.setText(f"Interval: {value} ms")
         if self.animator:
             self.animator.timer.setInterval(value)
@@ -310,18 +213,6 @@ class ParameterControlDialog(QDialog):
     def update_alpha(self, value):
         percent = round(value / 255 * 100)
         self.fill_alpha_label.setText(f"Fill Opacity: {percent}%")
-<<<<<<< Updated upstream
-
-    def play(self):
-        layer = self.layer
-        if not self.animator or self.animator.layer != layer:
-            self.animator = DBSCANAnimator(layer)
-            self.animator.run_dbscan_and_prepare()
-        else:
-            self.animator.resume()
-
-    def pause(self):
-=======
         self.fill_alpha = value
 
     def play(self):
@@ -346,15 +237,10 @@ class ParameterControlDialog(QDialog):
         if not self.layer:
             QMessageBox.warning(self, "No Layer", "레이어를 선택해야 합니다.")
             return
->>>>>>> Stashed changes
         if self.animator:
             self.animator.pause()
 
     def stop(self):
-<<<<<<< Updated upstream
-        if self.animator:
-            self.animator.stop()
-=======
         if not self.layer:
             QMessageBox.warning(self, "No Layer", "레이어를 선택해야 합니다.")
             return
@@ -397,17 +283,13 @@ class ParameterControlDialog(QDialog):
         clustered_layer.setRenderer(renderer)
 
         QgsProject.instance().addMapLayer(clustered_layer)
->>>>>>> Stashed changes
 
     def generate_color(self, index, total):
         h = (index / max(1, total)) % 1.0
         r, g, b = colorsys.hsv_to_rgb(h, 1.0, 1.0)
         return QColor(int(r * 255), int(g * 255), int(b * 255))
 
-<<<<<<< Updated upstream
-=======
 
->>>>>>> Stashed changes
     def compute_knn_kth_distance(self, k, eps_for_ratio=None):
         self.sorted_knn_dists = []
         self.below_eps_ratio = 0.0
@@ -422,13 +304,8 @@ class ParameterControlDialog(QDialog):
         if eps_for_ratio is not None:
             self.below_eps_ratio = sum(1 for d in kth_dists if d <= eps_for_ratio) / len(kth_dists) if kth_dists else 0
         if kth_dists:
-<<<<<<< Updated upstream
-            Config.eps_min = min(kth_dists)
-            Config.eps_max = max(kth_dists)
-=======
             self.eps_min = min(kth_dists)
             self.eps_max = max(kth_dists)
->>>>>>> Stashed changes
         return sum(kth_dists) / len(kth_dists) if kth_dists else 10.0
 
     def update_elbow_plot(self, current_eps):
@@ -437,11 +314,7 @@ class ParameterControlDialog(QDialog):
         ax.axhline(y=current_eps, color='r', linestyle='--', label=f"epsilon = {current_eps:.2f}")
         ax.set_title("k-NN Distance Distribution")
         ax.set_xlabel("Points")
-<<<<<<< Updated upstream
-        ax.set_ylabel(f"{Config.min_points}-NN Distance")
-=======
         ax.set_ylabel(f"{self.min_points}-NN Distance")
->>>>>>> Stashed changes
         ax.legend()
         y_pos = current_eps * 1.02
         ax.text(len(self.sorted_knn_dists) * 0.95, y_pos, f"{self.below_eps_ratio*100:.1f}% below epsilon", va='bottom', ha='right', color='blue')
@@ -452,11 +325,6 @@ class ParameterControlDialog(QDialog):
         return elbow_img_path
 
     def get_elbow_pixmap(self):
-<<<<<<< Updated upstream
-        self.compute_knn_kth_distance(Config.min_points, eps_for_ratio=Config.eps)
-        elbow_img_path = self.update_elbow_plot(Config.eps)
-        return QPixmap(elbow_img_path)
-=======
         self.compute_knn_kth_distance(self.min_points, eps_for_ratio=self.eps)
         elbow_img_path = self.update_elbow_plot(self.eps)
         return QPixmap(elbow_img_path)
@@ -687,4 +555,3 @@ class DBSCANAnimator:
         self.dialog.eps_slider.setEnabled(True)
 
 
->>>>>>> Stashed changes
