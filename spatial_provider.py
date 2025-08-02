@@ -36,7 +36,9 @@ from .algs import (
     Gravity,
     Kmeans,
     Hierarchical,
-    Dbscan
+    Dbscan,
+    Hotspot,
+    LocalMoransI
 )
 
 pluginPath = os.path.split(os.path.dirname(__file__))[0]
@@ -54,7 +56,9 @@ class SpatialProvider(QgsProcessingProvider):
             Gravity.Gravity(),
             Kmeans.Kmeans(),
             Hierarchical.Hierarchical(),
-            Dbscan.Dbscan()
+            Dbscan.Dbscan(),
+            Hotspot.Hotspot(),
+            LocalMoransI.LocalMoransI()
         ]
         
     def getAlgs(self):

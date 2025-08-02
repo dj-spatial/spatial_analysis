@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>WeightsDialog</class>
+ <widget class="QDialog" name="WeightsDialog">
+  <property name="windowTitle">
+   <string>Weights</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>Configure weights here.</string>
+      </property>
+     </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
