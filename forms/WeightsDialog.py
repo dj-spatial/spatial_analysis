@@ -75,6 +75,7 @@ class WeightsDialog(BASE, WIDGET):
                 w = weights.Rook.from_dataframe(gdf, ids=gdf[id_field])
             else:
                 block_col = self.blockColumnCombo.currentText()
+                gdf[block_col] = gdf[block_col].astype("category")
                 w = weights.util.block_weights(gdf[block_col], ids=gdf[id_field])
             order = self.orderSpin.value()
             if order > 1:
