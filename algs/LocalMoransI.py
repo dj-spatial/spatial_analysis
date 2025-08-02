@@ -29,8 +29,10 @@ __revision__ = '$Format:%H$'
 
 import os
 
+import numpy as np
+
 from qgis.PyQt.QtCore import QVariant, QUrl
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QIcon, QColor
 
 from qgis.core import (
     QgsField,
@@ -40,28 +42,23 @@ from qgis.core import (
     QgsProcessingUtils,
     QgsFeatureSink,
     QgsProcessingParameterField,
-    QgsProcessingParameterNumber,
-    QgsProcessingParameterEnum,
     QgsProcessingParameterString,
     QgsProcessingParameterFeatureSource,
-    QgsProcessingParameterFeatureSink
+    QgsProcessingParameterFeatureSink,
+    QgsVectorLayer,
+    QgsCategorizedSymbolRenderer,
+    QgsRendererCategory,
+    QgsSymbol,
+    QgsWkbTypes,
+    QgsProcessingLayerPostProcessorInterface
 )
 
 from processing.algs.qgis.QgisAlgorithm import QgisAlgorithm
 
-try:
-    from shapely import wkt
-except Exception:  # pragma: no cover - shapely might be missing
-    wkt = None
-
 # pysal modules - these may not be available in all environments
 try:
-    from libpysal.weights import KNN, W
-    from libpysal.weights.contiguity import Queen
     from esda.moran import Moran_Local
 except Exception as e:  # pragma: no cover - library might be missing
-    KNN = None
-    Queen = None
     Moran_Local = None
 
 pluginPath = os.path.split(os.path.split(os.path.dirname(__file__))[0])[0]
@@ -71,8 +68,6 @@ class LocalMoransI(QgisAlgorithm):
 
     INPUT = 'INPUT_LAYER'
     FIELD = 'FIELD'
-    WEIGHT_TYPE = 'WEIGHT_TYPE'
-    NEIGHBORS = 'NEIGHBORS'
     WEIGHTS_BTN = 'WEIGHTS_BTN'
     OUTPUT = 'OUTPUT'
 
@@ -100,34 +95,26 @@ class LocalMoransI(QgisAlgorithm):
             self.INPUT,
             self.tr('Input Layer'),
             [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
+        weights_param = QgsProcessingParameterString(
+            self.WEIGHTS_BTN,
+            self.tr('Weights'),
+            '', True)
+        weights_param.setMetadata({'widget_wrapper': {
+            'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
+            'layer_param': self.INPUT}})
+        self.addParameter(weights_param)
         self.addParameter(QgsProcessingParameterField(
             self.FIELD,
             self.tr('Numeric Field'),
             parentLayerParameterName=self.INPUT,
             type=QgsProcessingParameterField.Numeric))
-        self.addParameter(QgsProcessingParameterEnum(
-            self.WEIGHT_TYPE,
-            self.tr('Weight Type'),
-            options=[self.tr('K-Nearest Neighbors'), self.tr('Contiguity (Queen)')],
-            defaultValue=0))
-        self.addParameter(QgsProcessingParameterNumber(
-            self.NEIGHBORS,
-            self.tr('Number of Neighbors (k)'),
-            QgsProcessingParameterNumber.Integer,
-            8, False, 1, 50))
-        weights_param = QgsProcessingParameterString(
-            self.WEIGHTS_BTN,
-            self.tr('Weights'),
-            '', True)
-        weights_param.setMetadata({'widget_wrapper': {'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper'}})
-        self.addParameter(weights_param)
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.OUTPUT,
             self.tr('Output Layer'),
             QgsProcessing.TypeVector))
 
     def processAlgorithm(self, parameters, context, feedback):
-        if KNN is None or Moran_Local is None:
+        if Moran_Local is None:
             help_file = os.path.join(
                 pluginPath,
                 'spatial_analysis',
@@ -143,42 +130,55 @@ class LocalMoransI(QgisAlgorithm):
         feedback.pushInfo(self.tr("Starting Algorithm: '{}'".format(self.displayName())))
         layer = self.parameterAsSource(parameters, self.INPUT, context)
         field_name = self.parameterAsString(parameters, self.FIELD, context)
-        weight_method = self.parameterAsEnum(parameters, self.WEIGHT_TYPE, context)
-        k = self.parameterAsInt(parameters, self.NEIGHBORS, context)
+        weight_info = parameters.get(self.WEIGHTS_BTN)
+        if not weight_info:
+            raise QgsProcessingException(self.tr('Weights must be defined.'))
 
-        # Convert features to coordinate array and collect target values
-        coords = []
-        values = []
+        w = weight_info['weights']
+        if getattr(w, 'transform', '') != 'R':
+            w.transform = 'R'
+        id_field = weight_info['id_field']
+
+        id_to_feat = {}
+        id_to_val = {}
         for f in layer.getFeatures():
-            geom = f.geometry().centroid()
-            coords.append([geom.asPoint().x(), geom.asPoint().y()])
-            values.append(f[field_name])
+            fid = f[id_field]
+            id_to_feat[fid] = f
+            id_to_val[fid] = f[field_name]
 
-        if not coords:
-            raise QgsProcessingException(self.tr('No features found.'))
+        try:
+            values = [id_to_val[i] for i in w.id_order]
+        except KeyError:
+            raise QgsProcessingException(self.tr('ID field mismatch between weights and layer.'))
 
-        if weight_method == 1:  # Contiguity (Queen)
-            if wkt is None:
-                raise QgsProcessingException(self.tr('shapely 모듈이 필요합니다.'))
-            polygons = [wkt.loads(f.geometry().asWkt()) for f in layer.getFeatures()]
-            if Queen is not None:
-                # use PySAL for queen contiguity
-                w = Queen.from_iterable(polygons)
-            else:
-                neigh = {i: [] for i in range(len(polygons))}
-                for i, pi in enumerate(polygons):
-                    for j in range(i + 1, len(polygons)):
-                        if pi.touches(polygons[j]):
-                            neigh[i].append(j)
-                            neigh[j].append(i)
-                w = W(neigh)
+        m = Moran_Local(values, w, permutations=999)
+
+        # Local Moran's I values
+        local_i = getattr(m, 'Is', None)
+        if local_i is None:
+            # some versions expose Ii as .I or .Is
+            local_i = getattr(m, 'I', [])
+
+        # GeoDa reports analytical z-scores; compute them if available
+        if hasattr(m, 'z'):
+            local_z = m.z
         else:
-            w = KNN.from_array(coords, k=k)
-        m = Moran_Local(values, w)
+            ei = getattr(m, 'EI', getattr(m, 'EI_sim', None))
+            vi = getattr(m, 'VI_rand', getattr(m, 'VI_sim', None))
+            if ei is not None and vi is not None:
+                ei = np.asarray(ei)
+                vi = np.asarray(vi)
+                with np.errstate(invalid='ignore'):
+                    local_z = (np.asarray(local_i) - ei) / np.sqrt(vi)
+            else:
+                local_z = m.z_sim
 
         fields = layer.fields()
         new_fields = QgsFields()
+        new_fields.append(QgsField('LocalI', QVariant.Double))
         new_fields.append(QgsField('LocalIZ', QVariant.Double))
+        new_fields.append(QgsField('PValue', QVariant.Double))
+        new_fields.append(QgsField('Cluster', QVariant.String, len=10))
         fields = QgsProcessingUtils.combineFields(fields, new_fields)
         (sink, dest_id) = self.parameterAsSink(
             parameters,
@@ -188,16 +188,58 @@ class LocalMoransI(QgisAlgorithm):
             layer.wkbType(),
             layer.sourceCrs())
 
-        total = len(coords)
-        for i, (feat, z) in enumerate(zip(layer.getFeatures(), m.z_sim)):
-            out_feat = feat
+        cluster_map = {1: 'HH', 2: 'LH', 3: 'LL', 4: 'HL'}
+        clusters = []
+        for q, p in zip(m.q, m.p_sim):
+            if p < 0.05:
+                clusters.append(cluster_map.get(q, 'NotSig'))
+            else:
+                clusters.append('NotSig')
+
+        total = len(w.id_order)
+        for i, (fid, Ii, z, p, c) in enumerate(zip(w.id_order, local_i, local_z, m.p_sim, clusters)):
+            feat = id_to_feat[fid]
             attrs = feat.attributes()
-            attrs.extend([float(z)])
-            out_feat.setAttributes(attrs)
-            sink.addFeature(out_feat, QgsFeatureSink.FastInsert)
+            attrs.extend([float(Ii), float(z), float(p), c])
+            feat.setAttributes(attrs)
+            sink.addFeature(feat, QgsFeatureSink.FastInsert)
             feedback.setProgress(int(i / total * 100))
         feedback.setProgress(0)
         feedback.pushInfo(self.tr('Done with Local Moran Layer'))
+
+        # 결과 레이어 스타일 적용
+        result_layer = QgsProcessingUtils.mapLayerFromString(dest_id, context)
+
+        # Cluster 값에 따른 색상 정의
+        category_colors = {
+            'HH': '#e31a1c',     # High-High
+            'HL': '#fb9a99',     # High-Low
+            'LH': '#a6cee3',     # Low-High
+            'LL': '#1f78b4',     # Low-Low
+            'NotSig': '#d3d3d3'  # Not Significant
+        }
+
+        from qgis.core import QgsSymbol, QgsRendererCategory, QgsCategorizedSymbolRenderer
+        from PyQt5.QtGui import QColor
+
+        categories = []
+        for val, color in category_colors.items():
+            symbol = QgsSymbol.defaultSymbol(result_layer.geometryType())
+            symbol.setColor(QColor(color))
+            category = QgsRendererCategory(val, symbol, val)
+            categories.append(category)
+
+        renderer = QgsCategorizedSymbolRenderer('Cluster', categories)
+        result_layer.setRenderer(renderer)
+        result_layer.triggerRepaint()
+
+        # QML 스타일 파일을 임시로 저장
+        style_path = os.path.join(QgsProcessingUtils.tempFolder(), 'local_moran_cluster.qml')
+        result_layer.saveNamedStyle(style_path)
+
+        # context에 스타일 경로 설정 (자동 로드시 적용됨)
+        if context.willLoadLayerOnCompletion(dest_id):
+            context.layersToLoadOnCompletion()[dest_id].style = style_path
 
         results = {}
         results[self.OUTPUT] = dest_id

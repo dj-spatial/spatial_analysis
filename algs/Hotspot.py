@@ -40,7 +40,7 @@ from qgis.core import (
     QgsProcessingUtils,
     QgsFeatureSink,
     QgsProcessingParameterField,
-    QgsProcessingParameterNumber,
+    QgsProcessingParameterString,
     QgsProcessingParameterFeatureSource,
     QgsProcessingParameterFeatureSink
 )
@@ -49,10 +49,8 @@ from processing.algs.qgis.QgisAlgorithm import QgisAlgorithm
 
 # pysal modules - these may not be available in all environments
 try:
-    from libpysal.weights import KNN
     from esda.getisord import G_Local
 except Exception as e:  # pragma: no cover - library might be missing
-    KNN = None
     G_Local = None
 
 pluginPath = os.path.split(os.path.split(os.path.dirname(__file__))[0])[0]
@@ -62,7 +60,7 @@ class Hotspot(QgisAlgorithm):
 
     INPUT = 'INPUT_LAYER'
     FIELD = 'FIELD'
-    NEIGHBORS = 'NEIGHBORS'
+    WEIGHTS_BTN = 'WEIGHTS_BTN'
     OUTPUT = 'OUTPUT'
 
     def icon(self):
@@ -89,23 +87,26 @@ class Hotspot(QgisAlgorithm):
             self.INPUT,
             self.tr('Input Layer'),
             [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
+        weights_param = QgsProcessingParameterString(
+            self.WEIGHTS_BTN,
+            self.tr('Weights'),
+            '', True)
+        weights_param.setMetadata({'widget_wrapper': {
+            'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
+            'layer_param': self.INPUT}})
+        self.addParameter(weights_param)
         self.addParameter(QgsProcessingParameterField(
             self.FIELD,
             self.tr('Numeric Field'),
             parentLayerParameterName=self.INPUT,
             type=QgsProcessingParameterField.Numeric))
-        self.addParameter(QgsProcessingParameterNumber(
-            self.NEIGHBORS,
-            self.tr('Number of Neighbors (k)'),
-            QgsProcessingParameterNumber.Integer,
-            8, False, 1, 50))
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.OUTPUT,
             self.tr('Output Layer'),
             QgsProcessing.TypeVector))
 
     def processAlgorithm(self, parameters, context, feedback):
-        if KNN is None or G_Local is None:
+        if G_Local is None:
             help_file = os.path.join(
                 pluginPath,
                 'spatial_analysis',
@@ -121,20 +122,27 @@ class Hotspot(QgisAlgorithm):
         feedback.pushInfo(self.tr("Starting Algorithm: '{}'".format(self.displayName())))
         layer = self.parameterAsSource(parameters, self.INPUT, context)
         field_name = self.parameterAsString(parameters, self.FIELD, context)
-        k = self.parameterAsInt(parameters, self.NEIGHBORS, context)
+        weight_info = parameters.get(self.WEIGHTS_BTN)
+        if not weight_info:
+            raise QgsProcessingException(self.tr('Weights must be defined.'))
 
-        # Convert features to coordinate array and collect target values
-        coords = []
-        values = []
+        w = weight_info['weights']
+        if getattr(w, 'transform', '') != 'R':
+            w.transform = 'R'
+        id_field = weight_info['id_field']
+
+        id_to_feat = {}
+        id_to_val = {}
         for f in layer.getFeatures():
-            geom = f.geometry().centroid()
-            coords.append([geom.asPoint().x(), geom.asPoint().y()])
-            values.append(f[field_name])
+            fid = f[id_field]
+            id_to_feat[fid] = f
+            id_to_val[fid] = f[field_name]
 
-        if not coords:
-            raise QgsProcessingException(self.tr('No features found.'))
+        try:
+            values = [id_to_val[i] for i in w.id_order]
+        except KeyError:
+            raise QgsProcessingException(self.tr('ID field mismatch between weights and layer.'))
 
-        w = KNN.from_array(coords, k=k)
         g = G_Local(values, w)
 
         fields = layer.fields()
@@ -149,13 +157,13 @@ class Hotspot(QgisAlgorithm):
             layer.wkbType(),
             layer.sourceCrs())
 
-        total = len(coords)
-        for i, (feat, z) in enumerate(zip(layer.getFeatures(), g.Zs)):
-            out_feat = feat
+        total = len(w.id_order)
+        for i, (fid, z) in enumerate(zip(w.id_order, g.Zs)):
+            feat = id_to_feat[fid]
             attrs = feat.attributes()
             attrs.extend([float(z)])
-            out_feat.setAttributes(attrs)
-            sink.addFeature(out_feat, QgsFeatureSink.FastInsert)
+            feat.setAttributes(attrs)
+            sink.addFeature(feat, QgsFeatureSink.FastInsert)
             feedback.setProgress(int(i / total * 100))
         feedback.setProgress(0)
         feedback.pushInfo(self.tr('Done with Hot Spot Layer'))
