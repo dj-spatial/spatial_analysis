@@ -6,7 +6,7 @@
 name=Spatial Analyzer
 qgisMinimumVersion=3.0
 description=Spatial Analysis Tools 
-version=0.1.3
+version=0.1.4
 author=D.J Paek
 email=dj.paek1@gmail.com
 
