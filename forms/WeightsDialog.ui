@@ -148,50 +148,30 @@
           </attribute>
           <layout class="QVBoxLayout" name="geomLayout">
            <item>
-            <layout class="QFormLayout" name="coordLayout">
-             <item row="0" column="0">
-              <widget class="QLabel" name="xCoordLabel">
-               <property name="text">
-                <string>X coordinate</string>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QComboBox" name="xCoordCombo"/>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="yCoordLabel">
-               <property name="text">
-                <string>Y coordinate</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="1">
-              <widget class="QComboBox" name="yCoordCombo"/>
-             </item>
-             <item row="2" column="0">
-              <widget class="QLabel" name="geomMetricLabel">
-               <property name="text">
-                <string>Distance metric</string>
-               </property>
-              </widget>
-             </item>
-             <item row="2" column="1">
-              <widget class="QComboBox" name="geomMetricCombo">
-               <item>
-                <property name="text">
-                 <string>Euclidean</string>
-                </property>
-               </item>
-               <item>
-                <property name="text">
-                 <string>Arc Distance</string>
-                </property>
-               </item>
-              </widget>
-             </item>
-            </layout>
+          <layout class="QFormLayout" name="coordLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="geomMetricLabel">
+             <property name="text">
+              <string>Distance metric</string>
+             </property>
+            </widget>
            </item>
+           <item row="0" column="1">
+            <widget class="QComboBox" name="geomMetricCombo">
+             <item>
+              <property name="text">
+               <string>Euclidean</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>Arc Distance</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+          </layout>
+         </item>
            <item>
             <widget class="QTabWidget" name="geomMethodTabs">
              <widget class="QWidget" name="bandTab">
@@ -476,7 +456,7 @@
             </widget>
            </item>
            <item row="0" column="1">
-            <widget class="QLineEdit" name="variablesEdit"/>
+            <widget class="QPlainTextEdit" name="variablesEdit"/>
            </item>
            <item row="1" column="0">
             <widget class="QLabel" name="transformLabel">

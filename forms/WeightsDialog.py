@@ -20,9 +20,7 @@ class WeightsDialog(BASE, WIDGET):
         if layer is not None:
             field_names = [f.name() for f in layer.fields()]
             self.idFieldCombo.addItems(field_names)
-            self.xCoordCombo.addItems(field_names)
-            self.yCoordCombo.addItems(field_names)
-
+            self.variablesEdit.setPlaceholderText('comma-separated field names')
             id_types = {QVariant.Int, QVariant.UInt, QVariant.LongLong,
                         QVariant.ULongLong, QVariant.String}
             block_fields = [f.name() for f in layer.fields()
@@ -84,8 +82,8 @@ class WeightsDialog(BASE, WIDGET):
             return w
 
         if self.distanceTypeTabs.currentIndex() == 0:
-            coords = list(zip(gdf[self.xCoordCombo.currentText()],
-                              gdf[self.yCoordCombo.currentText()]))
+            coords = list(zip(gdf.geometry.centroid.x,
+                              gdf.geometry.centroid.y))
             method_idx = self.geomMethodTabs.currentIndex()
             if method_idx == 0:
                 threshold = self.bandwidthSpin.value()
