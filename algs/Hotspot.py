@@ -30,7 +30,7 @@ __revision__ = '$Format:%H$'
 import os
 
 from qgis.PyQt.QtCore import QVariant, QUrl
-from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtGui import QIcon, QColor
 
 from qgis.core import (
     QgsField,
@@ -42,7 +42,10 @@ from qgis.core import (
     QgsProcessingParameterField,
     QgsProcessingParameterString,
     QgsProcessingParameterFeatureSource,
-    QgsProcessingParameterFeatureSink
+    QgsProcessingParameterFeatureSink,
+    QgsCategorizedSymbolRenderer,
+    QgsRendererCategory,
+    QgsSymbol
 )
 
 from processing.algs.qgis.QgisAlgorithm import QgisAlgorithm
@@ -127,8 +130,6 @@ class Hotspot(QgisAlgorithm):
             raise QgsProcessingException(self.tr('Weights must be defined.'))
 
         w = weight_info['weights']
-        if getattr(w, 'transform', '') != 'R':
-            w.transform = 'R'
         id_field = weight_info['id_field']
 
         id_to_feat = {}
@@ -143,11 +144,14 @@ class Hotspot(QgisAlgorithm):
         except KeyError:
             raise QgsProcessingException(self.tr('ID field mismatch between weights and layer.'))
 
-        g = G_Local(values, w)
+        g = G_Local(values, w, n_jobs=1)
 
         fields = layer.fields()
         new_fields = QgsFields()
         new_fields.append(QgsField('GiZScore', QVariant.Double))
+        new_fields.append(QgsField('GiPValue', QVariant.Double))
+        new_fields.append(QgsField('GiCluster', QVariant.Int))
+        new_fields.append(QgsField('GiSig', QVariant.String, len=15))
         fields = QgsProcessingUtils.combineFields(fields, new_fields)
         (sink, dest_id) = self.parameterAsSink(
             parameters,
@@ -158,16 +162,46 @@ class Hotspot(QgisAlgorithm):
             layer.sourceCrs())
 
         total = len(w.id_order)
-        for i, (fid, z) in enumerate(zip(w.id_order, g.Zs)):
+        for i, (fid, z, p) in enumerate(zip(w.id_order, g.Zs, g.p_sim)):
             feat = id_to_feat[fid]
             attrs = feat.attributes()
-            attrs.extend([float(z)])
+            if p < 0.05:
+                cluster = 1 if z > 0 else -1
+            else:
+                cluster = 0
+            if cluster == 1:
+                cat = 'High'
+            elif cluster == -1:
+                cat = 'Low'
+            else:
+                cat = 'Not Significant'
+            attrs.extend([float(z), float(p), cluster, cat])
             feat.setAttributes(attrs)
             sink.addFeature(feat, QgsFeatureSink.FastInsert)
             feedback.setProgress(int(i / total * 100))
         feedback.setProgress(0)
         feedback.pushInfo(self.tr('Done with Hot Spot Layer'))
 
-        results = {}
-        results[self.OUTPUT] = dest_id
+        # Apply style to result layer
+        result_layer = QgsProcessingUtils.mapLayerFromString(dest_id, context)
+        category_colors = {
+            'High': '#e31a1c',
+            'Low': '#1f78b4',
+            'Not Significant': '#d3d3d3'
+        }
+        categories = []
+        for val, color in category_colors.items():
+            symbol = QgsSymbol.defaultSymbol(result_layer.geometryType())
+            symbol.setColor(QColor(color))
+            category = QgsRendererCategory(val, symbol, val)
+            categories.append(category)
+        renderer = QgsCategorizedSymbolRenderer('GiSig', categories)
+        result_layer.setRenderer(renderer)
+        result_layer.triggerRepaint()
+        style_path = os.path.join(QgsProcessingUtils.tempFolder(), 'hotspot_gistar.qml')
+        result_layer.saveNamedStyle(style_path)
+        if context.willLoadLayerOnCompletion(dest_id):
+            context.layersToLoadOnCompletion()[dest_id].style = style_path
+        results = {self.OUTPUT: dest_id}
+
         return results

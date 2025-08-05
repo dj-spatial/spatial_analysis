@@ -135,8 +135,6 @@ class LocalMoransI(QgisAlgorithm):
             raise QgsProcessingException(self.tr('Weights must be defined.'))
 
         w = weight_info['weights']
-        if getattr(w, 'transform', '') != 'R':
-            w.transform = 'R'
         id_field = weight_info['id_field']
 
         id_to_feat = {}

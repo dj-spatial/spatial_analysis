@@ -133,9 +133,9 @@
          </layout>
         </widget>
        </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="distanceTab">
+     </layout>
+    </widget>
+    <widget class="QWidget" name="distanceTab">
       <attribute name="title">
        <string>Distance</string>
       </attribute>
@@ -521,14 +521,24 @@
         </widget>
        </item>
       </layout>
-     </widget>
     </widget>
-   </item>
-   <item>
-    <widget class="QDialogButtonBox" name="buttonBox">
-     <property name="standardButtons">
-      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
-     </property>
+   </widget>
+  </item>
+  <item>
+   <widget class="QCheckBox" name="rowStdCheck">
+    <property name="text">
+     <string>Row-standardize weights</string>
+    </property>
+    <property name="checked">
+     <bool>true</bool>
+    </property>
+   </widget>
+  </item>
+  <item>
+   <widget class="QDialogButtonBox" name="buttonBox">
+    <property name="standardButtons">
+     <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+    </property>
     </widget>
    </item>
   </layout>

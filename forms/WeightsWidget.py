@@ -3,9 +3,9 @@
 
 from processing.gui.wrappers import WidgetWrapper, DIALOG_STANDARD
 from processing.tools import dataobjects
-from qgis.PyQt.QtWidgets import QPushButton
+from qgis.PyQt.QtWidgets import QPushButton, QWidget, QHBoxLayout, QPlainTextEdit
 from qgis.PyQt.QtCore import QCoreApplication
-from qgis.core import QgsProcessingUtils
+from qgis.core import QgsProcessingUtils, QgsMessageLog, Qgis
 
 
 class WeightsWidgetWrapper(WidgetWrapper):
@@ -19,9 +19,19 @@ class WeightsWidgetWrapper(WidgetWrapper):
 
     def createWidget(self, **_):
         if self.dialogType == DIALOG_STANDARD:
+            container = QWidget()
+            layout = QHBoxLayout(container)
+            layout.setContentsMargins(0, 0, 0, 0)
             self.button = QPushButton(self.tr('Weights'))
+            self.button.setFixedWidth(80)
             self.button.clicked.connect(self.openDialog)
-            return self.button
+            self.summary_box = QPlainTextEdit()
+            self.summary_box.setReadOnly(True)
+            self.summary_box.setFixedHeight(60)
+
+            layout.addWidget(self.button)
+            layout.addWidget(self.summary_box)
+            return container
 
     def postInitialize(self, wrappers):
         if self.dialogType != DIALOG_STANDARD:
@@ -42,8 +52,18 @@ class WeightsWidgetWrapper(WidgetWrapper):
         dlg = WeightsDialog(self.layer)
         if dlg.exec_():
             gdf = self._layer_to_gdf(self.layer)
-            w = dlg.build_weights(gdf)
-            self.weight_data = {'weights': w, 'id_field': dlg.idFieldCombo.currentText()}
+            try:
+                w = dlg.build_weights(gdf)
+            except Exception as exc:  # pragma: no cover - dialog runtime
+                QgsMessageLog.logMessage(str(exc), 'spatial_analysis', Qgis.Critical)
+                return
+            summary = dlg.weight_summary(w)
+            self.weight_data = {
+                'weights': w,
+                'id_field': dlg.idFieldCombo.currentText(),
+                'summary': summary
+            }
+            self.summary_box.setPlainText(summary)
             self.widgetValueHasChanged.emit(self)
 
     def _layer_to_gdf(self, layer):
@@ -63,7 +83,15 @@ class WeightsWidgetWrapper(WidgetWrapper):
 
     def setValue(self, value):
         self.weight_data = value
+        if value and isinstance(value, dict) and 'summary' in value:
+            self.summary_box.setPlainText(value['summary'])
         return True
+
+    def _summarize_weights(self, w):
+        import numpy as np
+        card = np.array([len(nbrs) for nbrs in w.neighbors.values()])
+        return self.tr('n={0}, mean={1:.2f}, min={2}, max={3}').format(
+            w.n, card.mean(), card.min(), card.max())
 
     def tr(self, string):
         return QCoreApplication.translate('WeightsWidgetWrapper', string)
