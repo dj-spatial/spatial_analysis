@@ -22,12 +22,13 @@ class WeightsWidgetWrapper(WidgetWrapper):
             container = QWidget()
             layout = QHBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
-            self.button = QPushButton(self.tr('Weights'))
-            self.button.setFixedWidth(80)
+            height = 60
+            self.button = QPushButton(self.tr('Weight Manager'))
+            self.button.setFixedHeight(height)
             self.button.clicked.connect(self.openDialog)
             self.summary_box = QPlainTextEdit()
             self.summary_box.setReadOnly(True)
-            self.summary_box.setFixedHeight(60)
+            self.summary_box.setFixedHeight(height)
 
             layout.addWidget(self.button)
             layout.addWidget(self.summary_box)

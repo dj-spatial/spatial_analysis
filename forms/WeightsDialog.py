@@ -260,51 +260,50 @@ class WeightsDialog(BASE, WIDGET):
 
     def weight_summary(self, w):
         """Return a text summary describing the selected weights."""
-        lines = []
+        parts = []
         if self.mainTab.currentIndex() == 0:
-            lines.append('Contiguity Based')
-            lines.append(f"Method: {self.contiguityCombo.currentText()}")
-            lines.append(f"Precision threshold: {self.precisionSpin.value()}")
+            first_line = 'Contiguity Based'
+            parts.append(f"Method: {self.contiguityCombo.currentText()}")
+            parts.append(f"Precision threshold: {self.precisionSpin.value()}")
             order = self.orderSpin.value()
-            lines.append(f"Order: {order}")
+            parts.append(f"Order: {order}")
             if order > 1:
                 inc = 'Yes' if self.includeLowerCheck.isChecked() else 'No'
-                lines.append(f"Include lower orders: {inc}")
+                parts.append(f"Include lower orders: {inc}")
         else:
-            lines.append('Distance Based')
             if self.distanceTypeTabs.currentIndex() == 0:
-                lines.append('Type: Geometric Centroid')
-                lines.append(f"Distance metric: {self.geomMetricCombo.currentText()}")
+                first_line = 'Distance-Centroid Based'
+                parts.append(f"Distance metric: {self.geomMetricCombo.currentText()}")
             else:
-                lines.append('Type: Variables')
+                first_line = 'Distance-Variables Based'
                 vars_selected = [i.text() for i in self.variablesList.selectedItems()]
-                lines.append('Variables: {}'.format(', '.join(vars_selected)))
-                lines.append(f"Transform: {self.transformCombo.currentText()}")
-                lines.append(f"Distance metric: {self.varMetricCombo.currentText()}")
+                parts.append('Variables: {}'.format(', '.join(vars_selected)))
+                parts.append(f"Transform: {self.transformCombo.currentText()}")
+                parts.append(f"Distance metric: {self.varMetricCombo.currentText()}")
 
             m_idx = self.methodTabs.currentIndex()
             if m_idx == 0:
-                lines.append('Method: Distance Band')
-                lines.append(f"Bandwidth: {self.bandwidthSpin.value()}")
+                parts.append('Method: Distance Band')
+                parts.append(f"Bandwidth: {self.bandwidthSpin.value()}")
                 if self.bandInverseCheck.isChecked():
-                    lines.append(f"Inverse distance power: {self.bandPowerSpin.value()}")
+                    parts.append(f"Inverse distance power: {self.bandPowerSpin.value()}")
             elif m_idx == 1:
-                lines.append('Method: K-nearest neighbors')
-                lines.append(f"k: {self.knnSpin.value()}")
+                parts.append('Method: K-nearest neighbors')
+                parts.append(f"k: {self.knnSpin.value()}")
                 if self.knnInverseCheck.isChecked():
-                    lines.append(f"Inverse distance power: {self.knnPowerSpin.value()}")
+                    parts.append(f"Inverse distance power: {self.knnPowerSpin.value()}")
             else:
-                lines.append('Method: Kernel')
-                lines.append(f"Function: {self.kernelFunctionCombo.currentText()}")
+                parts.append('Method: Kernel')
+                parts.append(f"Function: {self.kernelFunctionCombo.currentText()}")
                 if self.adaptiveBandwidthRadio.isChecked():
-                    lines.append(f"Adaptive bandwidth k: {self.kernelNeighborsSpin.value()}")
+                    parts.append(f"Adaptive bandwidth k: {self.kernelNeighborsSpin.value()}")
                 elif self.maxKnnRadio.isChecked():
-                    lines.append(f"Max knn bandwidth k: {self.kernelNeighborsSpin.value()}")
+                    parts.append(f"Max knn bandwidth k: {self.kernelNeighborsSpin.value()}")
                 else:
-                    lines.append(f"Bandwidth: {self.kernelBandwidthSpin.value()}")
-                lines.append(f"Diagonal treatment: {self.diagOptionCombo.currentText()}")
+                    parts.append(f"Bandwidth: {self.kernelBandwidthSpin.value()}")
+                parts.append(f"Diagonal treatment: {self.diagOptionCombo.currentText()}")
 
-        lines.extend([
+        parts.extend([
             f"Observations: {w.n}",
             f"Min neighbors: {w.min_neighbors}",
             f"Max neighbors: {w.max_neighbors}",
@@ -312,4 +311,4 @@ class WeightsDialog(BASE, WIDGET):
             f"Percent nonzero: {w.pct_nonzero:.2f}",
             f"Islands: {len(w.islands)}",
         ])
-        return '\n'.join(lines)
+        return first_line + '\n' + ', '.join(parts)

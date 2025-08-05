@@ -105,7 +105,7 @@ class LocalMoransI(QgisAlgorithm):
         self.addParameter(weights_param)
         self.addParameter(QgsProcessingParameterField(
             self.FIELD,
-            self.tr('Numeric Field'),
+            self.tr('Variable Field'),
             parentLayerParameterName=self.INPUT,
             type=QgsProcessingParameterField.Numeric))
         self.addParameter(QgsProcessingParameterFeatureSink(
