@@ -117,7 +117,7 @@ class SpatialRegression(QgisAlgorithm):
             self.WEIGHTS_BTN,
             self.tr('Weights'),
             '',
-            optional=True)
+            optional=False)
         weights_param.setMetadata({'widget_wrapper': {
             'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
             'layer_param': self.INPUT}})
@@ -157,8 +157,8 @@ class SpatialRegression(QgisAlgorithm):
 
         import numpy as np
 
-        if model_idx in (1, 2) and not weight_info:
-            raise QgsProcessingException(self.tr('Weights must be defined for spatial models.'))
+        if not weight_info:
+            raise QgsProcessingException(self.tr('Weights must be defined.'))
 
         if model_idx == 0:
             feats = list(layer.getFeatures())
@@ -217,24 +217,69 @@ class SpatialRegression(QgisAlgorithm):
             model.summary.as_text() if hasattr(model.summary, 'as_text')
             else str(model.summary)
         )
+
+        def _section(text, start, *end_markers):
+            upper = text.upper()
+            start_idx = upper.find(start)
+            if start_idx == -1:
+                return ''
+            start_idx += len(start)
+            end_idx = len(text)
+            for end in end_markers:
+                idx = upper.find(end, start_idx)
+                if idx != -1 and idx < end_idx:
+                    end_idx = idx
+            return text[start_idx:end_idx].strip()
+
+        regression_txt = _section(summary_text, 'REGRESSION', 'REGRESSION DIAGNOSTICS')
+        reg_diag_txt = _section(summary_text, 'REGRESSION DIAGNOSTICS', 'DIAGNOSTICS FOR SPATIAL DEPENDENCE')
+        spatial_dep_txt = _section(summary_text, 'DIAGNOSTICS FOR SPATIAL DEPENDENCE', 'OBS')
+
+        vm = getattr(model, 'vm', None)
+        matrix_lines = None
+        if vm is not None:
+            names = list(ind_fields)
+            if vm.shape[0] == len(ind_fields) + 1:
+                names = ['Intercept'] + names
+            matrix_lines = ['\t'.join([''] + names)]
+            for name, row in zip(names, vm):
+                row_str = '\t'.join('{0:.6f}'.format(val) for val in row)
+                matrix_lines.append('\t'.join([name, row_str]))
+
+        obs_lines = ['OBS\t{0}\tPREDICTED\tRESIDUAL\tPRED ERROR'.format(dep_field)]
+        for idx, val in enumerate(y.flatten(), start=1):
+            pred = predictions[idx - 1]
+            resid = residuals[idx - 1]
+            pred_err = pred - val
+            obs_lines.append(
+                '{0}\t{1:.5f}\t{2:.5f}\t{3:.5f}\t{4:.5f}'.format(
+                    idx, val, pred, resid, pred_err
+                )
+            )
+
         with codecs.open(output_report, 'w', encoding='utf-8') as f:
             f.write('<html><head>\n')
             f.write('<meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>\n')
-            f.write('<pre>{0}</pre>\n'.format(summary_text))
-            vm = getattr(model, 'vm', None)
-            if vm is not None:
-                names = list(ind_fields)
-                if vm.shape[0] == len(ind_fields) + 1:
-                    names = ['Intercept'] + names
-                matrix_lines = ['\t'.join([''] + names)]
-                for name, row in zip(names, vm):
-                    row_str = '\t'.join('{0:.6f}'.format(val) for val in row)
-                    matrix_lines.append('\t'.join([name, row_str]))
-                f.write('<h2>{0}</h2>\n'.format(self.tr('Coefficients Variance Matrix')))
-                f.write('<pre>{0}</pre>\n'.format('\n'.join(matrix_lines)))
+            if regression_txt:
+                f.write('<h2>{0}</h2>\n<pre>{1}</pre>\n'.format(self.tr('Regression'), regression_txt))
+            if reg_diag_txt:
+                f.write('<h2>{0}</h2>\n<pre>{1}</pre>\n'.format(self.tr('Regression Diagnostics'), reg_diag_txt))
+            if spatial_dep_txt:
+                f.write('<h2>{0}</h2>\n<pre>{1}</pre>\n'.format(self.tr('Diagnostics for Spatial Dependence'), spatial_dep_txt))
+            if matrix_lines:
+                f.write('<h2>{0}</h2>\n<pre>{1}</pre>\n'.format(self.tr('Coefficients Variance Matrix'), '\n'.join(matrix_lines)))
+            f.write('<h2>{0}</h2>\n<pre>{1}</pre>\n'.format(self.tr('Observations'), '\n'.join(obs_lines)))
             f.write('</body></html>')
 
         results = {}
         results[self.OUTPUT] = dest_id
         results[self.OUTPUT_REPORT] = output_report
         return results
+
+    def checkParameterValues(self, parameters, context):
+        ok, msg = super().checkParameterValues(parameters, context)
+        if not ok:
+            return ok, msg
+        if not parameters.get(self.WEIGHTS_BTN):
+            return False, self.tr('Weights must be defined.')
+        return True, ''

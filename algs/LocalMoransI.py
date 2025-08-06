@@ -95,23 +95,35 @@ class LocalMoransI(QgisAlgorithm):
             self.INPUT,
             self.tr('Input Layer'),
             [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
-        weights_param = QgsProcessingParameterString(
-            self.WEIGHTS_BTN,
-            self.tr('Weights'),
-            '', True)
-        weights_param.setMetadata({'widget_wrapper': {
-            'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
-            'layer_param': self.INPUT}})
-        self.addParameter(weights_param)
+
         self.addParameter(QgsProcessingParameterField(
             self.FIELD,
             self.tr('Variable Field'),
             parentLayerParameterName=self.INPUT,
             type=QgsProcessingParameterField.Numeric))
+
+        weights_param = QgsProcessingParameterString(
+            self.WEIGHTS_BTN,
+            self.tr('Weights'),
+            '',
+            optional=False)
+        weights_param.setMetadata({'widget_wrapper': {
+            'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
+            'layer_param': self.INPUT}})
+        self.addParameter(weights_param)
+
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.OUTPUT,
             self.tr('Output Layer'),
             QgsProcessing.TypeVector))
+
+    def checkParameterValues(self, parameters, context):
+        ok, msg = super().checkParameterValues(parameters, context)
+        if not ok:
+            return ok, msg
+        if not parameters.get(self.WEIGHTS_BTN):
+            return False, self.tr('Weights must be defined.')
+        return True, ''
 
     def processAlgorithm(self, parameters, context, feedback):
         if Moran_Local is None:
