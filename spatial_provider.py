@@ -39,7 +39,8 @@ from .algs import (
     Dbscan,
     Hotspot,
     LocalMoransI,
-    SpatialRegression
+    SpatialRegression,
+    GeographicallyWeightedRegression
 )
 
 pluginPath = os.path.split(os.path.dirname(__file__))[0]
@@ -60,7 +61,8 @@ class SpatialProvider(QgsProcessingProvider):
             Dbscan.Dbscan(),
             Hotspot.Hotspot(),
             LocalMoransI.LocalMoransI(),
-            SpatialRegression.SpatialRegression()
+            SpatialRegression.SpatialRegression(),
+            GeographicallyWeightedRegression.GeographicallyWeightedRegression()
         ]
         
     def getAlgs(self):
