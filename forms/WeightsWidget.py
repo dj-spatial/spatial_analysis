@@ -3,7 +3,7 @@
 
 from processing.gui.wrappers import WidgetWrapper, DIALOG_STANDARD
 from processing.tools import dataobjects
-from qgis.PyQt.QtWidgets import QPushButton, QWidget, QHBoxLayout, QPlainTextEdit
+from qgis.PyQt.QtWidgets import QPushButton, QWidget, QHBoxLayout
 from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import QgsProcessingUtils, QgsMessageLog, Qgis
 
@@ -22,16 +22,10 @@ class WeightsWidgetWrapper(WidgetWrapper):
             container = QWidget()
             layout = QHBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
-            height = 60
             self.button = QPushButton(self.tr('Weight Manager'))
-            self.button.setFixedHeight(height)
             self.button.clicked.connect(self.openDialog)
-            self.summary_box = QPlainTextEdit()
-            self.summary_box.setReadOnly(True)
-            self.summary_box.setFixedHeight(height)
 
             layout.addWidget(self.button)
-            layout.addWidget(self.summary_box)
             return container
 
     def postInitialize(self, wrappers):
@@ -64,7 +58,9 @@ class WeightsWidgetWrapper(WidgetWrapper):
                 'id_field': dlg.idFieldCombo.currentText(),
                 'summary': summary
             }
-            self.summary_box.setPlainText(summary)
+            dialog = self.dialog() if callable(self.dialog) else self.dialog
+            if dialog and hasattr(dialog, 'loadWeightSummary'):
+                dialog.loadWeightSummary(summary)
             self.widgetValueHasChanged.emit(self)
 
     def _layer_to_gdf(self, layer):
@@ -84,8 +80,9 @@ class WeightsWidgetWrapper(WidgetWrapper):
 
     def setValue(self, value):
         self.weight_data = value
-        if value and isinstance(value, dict) and 'summary' in value:
-            self.summary_box.setPlainText(value['summary'])
+        dialog = self.dialog() if callable(self.dialog) else self.dialog
+        if value and dialog and hasattr(dialog, 'loadWeightSummary'):
+            dialog.loadWeightSummary(value.get('summary', ''))
         return True
 
     def _summarize_weights(self, w):

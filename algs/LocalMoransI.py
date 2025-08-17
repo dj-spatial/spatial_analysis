@@ -28,6 +28,7 @@ __copyright__ = '(C) 2024, D.J Paek'
 __revision__ = '$Format:%H$'
 
 import os
+import codecs
 
 import numpy as np
 
@@ -45,6 +46,7 @@ from qgis.core import (
     QgsProcessingParameterString,
     QgsProcessingParameterFeatureSource,
     QgsProcessingParameterFeatureSink,
+    QgsProcessingParameterFileDestination,
     QgsVectorLayer,
     QgsCategorizedSymbolRenderer,
     QgsRendererCategory,
@@ -70,6 +72,7 @@ class LocalMoransI(QgisAlgorithm):
     FIELD = 'FIELD'
     WEIGHTS_BTN = 'WEIGHTS_BTN'
     OUTPUT = 'OUTPUT'
+    WEIGHT_REPORT = 'WEIGHT_REPORT'
 
     def icon(self):
         # reuse clustering icon
@@ -95,27 +98,27 @@ class LocalMoransI(QgisAlgorithm):
             self.INPUT,
             self.tr('Input Layer'),
             [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
-
+        weights_param = QgsProcessingParameterString(
+            self.WEIGHTS_BTN,
+            self.tr('Weights'),
+            '', True)
+        weights_param.setMetadata({'widget_wrapper': {
+            'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
+            'layer_param': self.INPUT}})
+        self.addParameter(weights_param)
         self.addParameter(QgsProcessingParameterField(
             self.FIELD,
             self.tr('Variable Field'),
             parentLayerParameterName=self.INPUT,
             type=QgsProcessingParameterField.Numeric))
-
-        weights_param = QgsProcessingParameterString(
-            self.WEIGHTS_BTN,
-            self.tr('Weights'),
-            '',
-            optional=False)
-        weights_param.setMetadata({'widget_wrapper': {
-            'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
-            'layer_param': self.INPUT}})
-        self.addParameter(weights_param)
-
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.OUTPUT,
             self.tr('Output Layer'),
             QgsProcessing.TypeVector))
+        self.addParameter(QgsProcessingParameterFileDestination(
+            self.WEIGHT_REPORT,
+            self.tr('Weight Report'),
+            'HTML files (*.html)'))
 
     def checkParameterValues(self, parameters, context):
         ok, msg = super().checkParameterValues(parameters, context)
@@ -250,7 +253,12 @@ class LocalMoransI(QgisAlgorithm):
         # context에 스타일 경로 설정 (자동 로드시 적용됨)
         if context.willLoadLayerOnCompletion(dest_id):
             context.layersToLoadOnCompletion()[dest_id].style = style_path
+        weight_report = self.parameterAsFileOutput(parameters, self.WEIGHT_REPORT, context)
+        summary = weight_info.get('summary', '')
+        with codecs.open(weight_report, 'w', encoding='utf-8') as f:
+            f.write('<html><head>\n')
+            f.write('<meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>\n')
+            f.write('<pre>{0}</pre>\n'.format(summary))
+            f.write('</body></html>')
+        return {self.OUTPUT: dest_id}
 
-        results = {}
-        results[self.OUTPUT] = dest_id
-        return results

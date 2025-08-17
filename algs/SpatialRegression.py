@@ -69,6 +69,7 @@ class SpatialRegression(QgisAlgorithm):
     WEIGHTS_BTN = 'WEIGHTS_BTN'
     OUTPUT = 'OUTPUT'
     OUTPUT_REPORT = 'OUTPUT_REPORT'
+    WEIGHT_REPORT = 'WEIGHT_REPORT'
 
     def icon(self):
         return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'central.svg'))
@@ -133,6 +134,12 @@ class SpatialRegression(QgisAlgorithm):
             self.tr('Output Report'),
             'HTML files (*.html)'))
 
+        self.addParameter(QgsProcessingParameterFileDestination(
+            self.WEIGHT_REPORT,
+            self.tr('Weight Report'),
+            'HTML files (*.html)',
+            optional=True))
+
     def processAlgorithm(self, parameters, context, feedback):
         if OLS is None:
             help_file = os.path.join(
@@ -189,12 +196,16 @@ class SpatialRegression(QgisAlgorithm):
                 model = ML_Error(y, X, w, name_y=dep_field, name_x=ind_fields)
 
         predictions = model.predy.flatten()
-        residuals = model.u.flatten()
+        actual = y.flatten()
+        residuals = actual - predictions
+        pred_errors = predictions - actual
+
 
         fields = layer.fields()
         new_fields = QgsFields()
         new_fields.append(QgsField('Predicted', QVariant.Double))
         new_fields.append(QgsField('Residual', QVariant.Double))
+        new_fields.append(QgsField('Pred Error', QVariant.Double))
         fields = QgsProcessingUtils.combineFields(fields, new_fields)
 
         (sink, dest_id) = self.parameterAsSink(
@@ -208,7 +219,7 @@ class SpatialRegression(QgisAlgorithm):
         for idx, f in enumerate(feats):
             out_f = QgsFeature(fields)
             out_f.setGeometry(f.geometry())
-            attrs = f.attributes() + [float(predictions[idx]), float(residuals[idx])]
+            attrs = f.attributes() + [float(predictions[idx]), float(residuals[idx]), float(pred_errors[idx])]
             out_f.setAttributes(attrs)
             sink.addFeature(out_f, QgsFeatureSink.FastInsert)
 
@@ -247,10 +258,10 @@ class SpatialRegression(QgisAlgorithm):
                 matrix_lines.append('\t'.join([name, row_str]))
 
         obs_lines = ['OBS\t{0}\tPREDICTED\tRESIDUAL\tPRED ERROR'.format(dep_field)]
-        for idx, val in enumerate(y.flatten(), start=1):
+        for idx, val in enumerate(actual, start=1):
             pred = predictions[idx - 1]
             resid = residuals[idx - 1]
-            pred_err = pred - val
+            pred_err = pred_errors[idx - 1]
             obs_lines.append(
                 '{0}\t{1:.5f}\t{2:.5f}\t{3:.5f}\t{4:.5f}'.format(
                     idx, val, pred, resid, pred_err
@@ -271,9 +282,16 @@ class SpatialRegression(QgisAlgorithm):
             f.write('<h2>{0}</h2>\n<pre>{1}</pre>\n'.format(self.tr('Observations'), '\n'.join(obs_lines)))
             f.write('</body></html>')
 
-        results = {}
-        results[self.OUTPUT] = dest_id
-        results[self.OUTPUT_REPORT] = output_report
+        weight_report = self.parameterAsFileOutput(parameters, self.WEIGHT_REPORT, context) if weight_info else ''
+        if weight_info and weight_report:
+            summary = weight_info.get('summary', '')
+            with codecs.open(weight_report, 'w', encoding='utf-8') as f:
+                f.write('<html><head>\n')
+                f.write('<meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>\n')
+                f.write('<pre>{0}</pre>\n'.format(summary))
+                f.write('</body></html>')
+
+        results = {self.OUTPUT: dest_id, self.OUTPUT_REPORT: output_report}
         return results
 
     def checkParameterValues(self, parameters, context):
@@ -283,3 +301,4 @@ class SpatialRegression(QgisAlgorithm):
         if not parameters.get(self.WEIGHTS_BTN):
             return False, self.tr('Weights must be defined.')
         return True, ''
+

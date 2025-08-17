@@ -85,10 +85,10 @@ class GeographicallyWeightedRegression(QgisAlgorithm):
         return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'cluster.svg'))
 
     def group(self):
-        return self.tr('Regression')
+        return self.tr('Spatial Regression')
 
     def groupId(self):
-        return 'regression'
+        return 'spatialregression'
 
     def name(self):
         return 'gwr'
