@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QSpinBox,
     QMessageBox,
+    QFrame,
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QPixmap, QColor
@@ -93,6 +94,25 @@ class ParameterControlDialog(QDialog):
         layout.addWidget(self.eps_ratio_label)
         self.control_widgets.append(self.eps_ratio_label)
 
+        # Elbow Plot
+        self.plot_label = QLabel()
+        layout.addWidget(self.plot_label)
+        self.control_widgets.append(self.plot_label)
+
+        # Animation Control separator
+        line_layout = QHBoxLayout()
+        line_left = QFrame()
+        line_left.setFrameShape(QFrame.HLine)
+        line_left.setFrameShadow(QFrame.Sunken)
+        line_label = QLabel("Animation Control")
+        line_right = QFrame()
+        line_right.setFrameShape(QFrame.HLine)
+        line_right.setFrameShadow(QFrame.Sunken)
+        line_layout.addWidget(line_left)
+        line_layout.addWidget(line_label)
+        line_layout.addWidget(line_right)
+        layout.addLayout(line_layout)
+
         # Interval
         self.interval_label = QLabel(f"Interval: {self.timer_interval} ms")
         layout.addWidget(self.interval_label)
@@ -139,11 +159,6 @@ class ParameterControlDialog(QDialog):
         layout.addLayout(btns)
         self.control_widgets.extend([self.play_btn, self.pause_btn, self.stop_btn, self.clear_btn, self.run_btn])
 
-        # Elbow Plot
-        self.plot_label = QLabel()
-        layout.addWidget(self.plot_label)
-        self.control_widgets.append(self.plot_label)
-
         self.setLayout(layout)
 
         QgsProject.instance().layerWillBeRemoved.connect(self.on_project_layer_removed)
@@ -172,6 +187,9 @@ class ParameterControlDialog(QDialog):
         self.play_btn.setEnabled(not playing)
         self.clear_btn.setEnabled(not playing)
         self.minpts_spin.setEnabled(not playing)
+        self.minpts_label.setEnabled(not playing)
+        self.eps_slider.setEnabled(not playing)
+        self.eps_label.setEnabled(not playing)
         self.pause_btn.setEnabled(playing)
         self.stop_btn.setEnabled(playing)
 
@@ -418,11 +436,10 @@ class ParameterControlDialog(QDialog):
         n = max(len(self.sorted_knn_dists), 1)
         ms = 0.125 * 600 / n
         ms = max(0.1, min(ms, 5.0))
-        ax.plot(
+        ax.scatter(
             range(1, n + 1),
             self.sorted_knn_dists,
-            marker="o",
-            markersize=ms,
+            s=ms ** 2,
             color="black",
         )
         ax.set_title("k-NN Distance Distribution")
