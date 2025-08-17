@@ -28,6 +28,7 @@ __copyright__ = '(C) 2024, D.J Paek'
 __revision__ = '$Format:%H$'
 
 import os
+import codecs
 
 from qgis.PyQt.QtCore import QVariant, QUrl
 from qgis.PyQt.QtGui import QIcon, QColor
@@ -43,6 +44,7 @@ from qgis.core import (
     QgsProcessingParameterString,
     QgsProcessingParameterFeatureSource,
     QgsProcessingParameterFeatureSink,
+    QgsProcessingParameterFileDestination,
     QgsCategorizedSymbolRenderer,
     QgsRendererCategory,
     QgsSymbol
@@ -65,6 +67,7 @@ class Hotspot(QgisAlgorithm):
     FIELD = 'FIELD'
     WEIGHTS_BTN = 'WEIGHTS_BTN'
     OUTPUT = 'OUTPUT'
+    WEIGHT_REPORT = 'WEIGHT_REPORT'
 
     def icon(self):
         # reuse clustering icon
@@ -107,6 +110,18 @@ class Hotspot(QgisAlgorithm):
             self.OUTPUT,
             self.tr('Output Layer'),
             QgsProcessing.TypeVector))
+        self.addParameter(QgsProcessingParameterFileDestination(
+            self.WEIGHT_REPORT,
+            self.tr('Weight Report'),
+            'HTML files (*.html)'))
+
+    def checkParameterValues(self, parameters, context):
+        ok, msg = super().checkParameterValues(parameters, context)
+        if not ok:
+            return ok, msg
+        if not parameters.get(self.WEIGHTS_BTN):
+            return False, self.tr('Weights must be defined.')
+        return True, ''
 
     def processAlgorithm(self, parameters, context, feedback):
         if G_Local is None:
@@ -202,6 +217,11 @@ class Hotspot(QgisAlgorithm):
         result_layer.saveNamedStyle(style_path)
         if context.willLoadLayerOnCompletion(dest_id):
             context.layersToLoadOnCompletion()[dest_id].style = style_path
-        results = {self.OUTPUT: dest_id}
-
-        return results
+        weight_report = self.parameterAsFileOutput(parameters, self.WEIGHT_REPORT, context)
+        summary = weight_info.get('summary', '')
+        with codecs.open(weight_report, 'w', encoding='utf-8') as f:
+            f.write('<html><head>\n')
+            f.write('<meta http-equiv="Content-Type" content="text/html; charset=utf-8" /></head><body>\n')
+            f.write('<pre>{0}</pre>\n'.format(summary))
+            f.write('</body></html>')
+        return {self.OUTPUT: dest_id}
