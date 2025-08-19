@@ -113,7 +113,7 @@ class LocalMoransI(QgisAlgorithm):
             type=QgsProcessingParameterField.Numeric))
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.OUTPUT,
-            self.tr('Output Layer'),
+            self.tr('Local Moran' + "'" + 's i'),
             QgsProcessing.TypeVector))
         self.addParameter(QgsProcessingParameterFileDestination(
             self.WEIGHT_REPORT,
@@ -245,7 +245,6 @@ class LocalMoransI(QgisAlgorithm):
         renderer = QgsCategorizedSymbolRenderer('Cluster', categories)
         result_layer.setRenderer(renderer)
         result_layer.triggerRepaint()
-        result_layer.setName("Local Moran's i")
 
         # QML 스타일 파일을 임시로 저장
         style_path = os.path.join(QgsProcessingUtils.tempFolder(), 'local_moran_cluster.qml')

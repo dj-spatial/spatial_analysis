@@ -111,7 +111,7 @@ class Hotspot(QgisAlgorithm):
             type=QgsProcessingParameterField.Numeric))
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.OUTPUT,
-            self.tr('Output Layer'),
+            self.tr('Gi*'),
             QgsProcessing.TypeVector))
         self.addParameter(QgsProcessingParameterFileDestination(
             self.WEIGHT_REPORT,
@@ -142,6 +142,7 @@ class Hotspot(QgisAlgorithm):
 
         feedback.pushInfo(self.tr("Starting Algorithm: '{}'".format(self.displayName())))
         layer = self.parameterAsSource(parameters, self.INPUT, context)
+        input_name = layer.sourceName()              # 추가
         field_name = self.parameterAsString(parameters, self.FIELD, context)
         weight_info = parameters.get(self.WEIGHTS_BTN)
         if not weight_info:
@@ -228,12 +229,11 @@ class Hotspot(QgisAlgorithm):
         renderer = QgsCategorizedSymbolRenderer('GiSig', categories)
         result_layer.setRenderer(renderer)
         result_layer.triggerRepaint()
-        result_layer.setName('Gi*')
+        
         style_path = os.path.join(QgsProcessingUtils.tempFolder(), 'hotspot_gistar.qml')
         result_layer.saveNamedStyle(style_path)
         if context.willLoadLayerOnCompletion(dest_id):
             details = context.layersToLoadOnCompletion()[dest_id]
-            details.name = 'Gi*'      # 완료 후 자동 로드될 때 표시 이름 지정
             details.style = style_path
 
         weight_report = self.parameterAsFileOutput(parameters, self.WEIGHT_REPORT, context)

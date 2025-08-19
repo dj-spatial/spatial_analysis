@@ -126,12 +126,12 @@ class SpatialRegression(QgisAlgorithm):
 
         self.addParameter(QgsProcessingParameterFeatureSink(
             self.OUTPUT,
-            self.tr('Output Layer'),
+            self.tr('Spatial Regression'),
             QgsProcessing.TypeVector))
 
         self.addParameter(QgsProcessingParameterFileDestination(
             self.OUTPUT_REPORT,
-            self.tr('Output Report'),
+            self.tr('OUTPUT_REPORT'),
             'HTML files (*.html)'))
 
         self.addParameter(QgsProcessingParameterFileDestination(
@@ -224,12 +224,6 @@ class SpatialRegression(QgisAlgorithm):
             attrs = f.attributes() + [float(predictions[idx]), float(residuals[idx]), float(pred_errors[idx])]
             out_f.setAttributes(attrs)
             sink.addFeature(out_f, QgsFeatureSink.FastInsert)
-
-        # name output layer according to model
-        result_layer = QgsProcessingUtils.mapLayerFromString(dest_id, context)
-        model_names = ['OLS', 'SLM', 'SEM']
-        if result_layer:
-            result_layer.setName(model_names[model_idx])
 
         output_report = self.parameterAsFileOutput(parameters, self.OUTPUT_REPORT, context)
         summary_text = (

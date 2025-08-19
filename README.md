@@ -7,6 +7,7 @@ The Plugin implements spatial clustering, central tendancy and distribution to p
 2. Spatial Central Tendancy(Mean Center, Midian Center, Central Feature)
 3. Spatial Distrubution(Standard Distance, Standard Deviation Ellipse)
 4. Regression(Geographically Weighted Regression)
+5. Dimension Reduction(PCA, t-SNE)
    - Works with point, line or polygon layers
    - Supports projected or spherical distances
    - Model choices: Gaussian for normal data, Poisson for counts, Logistic for binary data

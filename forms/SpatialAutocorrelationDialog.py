@@ -45,9 +45,10 @@ class SpatialAutocorrelationDialog(QDialog):
 
         main_layout = QVBoxLayout(self)
         param_tabs = QTabWidget()
-        param_tabs.addTab(self._create_variables_widget(), self.tr('Variable Setting'))
+        var_widget = self._create_variables_widget()
+        param_tabs.addTab(var_widget, self.tr('Variable Setting'))
         param_tabs.addTab(self._create_report_widget(), self.tr('Weight Report'))
-        param_tabs.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+        param_tabs.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         main_layout.addWidget(param_tabs)
 
         self._setup_test_tabs(main_layout)
@@ -90,6 +91,7 @@ class SpatialAutocorrelationDialog(QDialog):
         self.reportText = QTextEdit()
         self.reportText.setReadOnly(True)
         self.reportText.setPlainText(self.summary)
+        self.reportText.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Ignored)
         layout.addWidget(self.reportText)
         return widget
 
@@ -121,8 +123,8 @@ class SpatialAutocorrelationDialog(QDialog):
         plot.setMinimumHeight(300)
         plot.setAlignment(Qt.AlignCenter)
         plot.setScaledContents(True)
-        v.addWidget(text)
         v.addWidget(plot)
+        v.addWidget(text)
         run_btn.clicked.connect(lambda: self.run_test(name, text, plot, add_cb))
         return widget, text, plot, add_cb
 

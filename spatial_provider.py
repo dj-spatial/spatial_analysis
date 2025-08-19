@@ -23,7 +23,17 @@
 """
 import os
 
-from qgis.core import QgsProcessingProvider
+from qgis.core import (
+    QgsProcessingProvider,
+    QgsProcessingAlgorithm,
+    QgsProcessingOutputVectorLayer,
+    QgsProcessingOutputRasterLayer,
+    QgsVectorLayer,
+    QgsRasterLayer,
+    QgsProject,
+    QgsProcessingException,
+)
+
 from qgis.PyQt.QtGui import QIcon
 
 from .algs import (
@@ -40,10 +50,56 @@ from .algs import (
     Hotspot,
     LocalMoransI,
     SpatialRegression,
-    GeographicallyWeightedRegression
+    GeographicallyWeightedRegression,
+    Pca,
+    Tsne
 )
 
+
 pluginPath = os.path.split(os.path.dirname(__file__))[0]
+
+class SampleFileAlgorithm(QgsProcessingAlgorithm):
+    """Algorithm representing a bundled sample data file."""
+
+    def __init__(self, file_path):
+        super().__init__()
+        self._path = file_path
+        self._name = os.path.splitext(os.path.basename(file_path))[0]
+        self._is_vector = file_path.lower().endswith(
+            (".shp", ".gpkg", ".geojson", ".json", ".csv")
+        )
+
+    def name(self):
+        return self._name
+
+    def displayName(self):
+        return os.path.basename(self._path)
+
+    def group(self):
+        return "Sample Data"
+
+    def groupId(self):
+        return "sample_data"
+
+    def initAlgorithm(self, config=None):
+        if self._is_vector:
+            self.addOutput(QgsProcessingOutputVectorLayer("OUTPUT", "Layer"))
+        else:
+            self.addOutput(QgsProcessingOutputRasterLayer("OUTPUT", "Layer"))
+
+    def processAlgorithm(self, parameters, context, feedback):
+        if self._is_vector:
+            layer = QgsVectorLayer(self._path, self._name, "ogr")
+        else:
+            layer = QgsRasterLayer(self._path, self._name)
+        if not layer.isValid():
+            raise QgsProcessingException(f"Could not load sample file: {self._path}")
+        QgsProject.instance().addMapLayer(layer)
+        return {"OUTPUT": layer}
+
+    def createInstance(self):
+        return SampleFileAlgorithm(self._path)
+
 
 class SpatialProvider(QgsProcessingProvider):
     def __init__(self):
@@ -62,7 +118,9 @@ class SpatialProvider(QgsProcessingProvider):
             Hotspot.Hotspot(),
             LocalMoransI.LocalMoransI(),
             SpatialRegression.SpatialRegression(),
-            GeographicallyWeightedRegression.GeographicallyWeightedRegression()
+            GeographicallyWeightedRegression.GeographicallyWeightedRegression(),
+            Pca.Pca(),
+            Tsne.Tsne()
         ]
         
     def getAlgs(self):
@@ -83,3 +141,14 @@ class SpatialProvider(QgsProcessingProvider):
     def loadAlgorithms(self, *args, **kwargs):
         for alg in self.alglist:
             self.addAlgorithm(alg)
+        self._loadSampleDataAlgorithms()
+
+    def _loadSampleDataAlgorithms(self):
+        data_path = os.path.join(os.path.dirname(__file__), "sample_data")
+        if not os.path.exists(data_path):
+            return
+        for filename in sorted(os.listdir(data_path)):
+            path = os.path.join(data_path, filename)
+            if not os.path.isfile(path):
+                continue
+            self.addAlgorithm(SampleFileAlgorithm(path))
