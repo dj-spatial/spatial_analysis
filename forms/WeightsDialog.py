@@ -2,8 +2,9 @@
 """Dialog for configuring spatial weights."""
 
 import os
+import csv
 from qgis.PyQt import uic
-from qgis.PyQt.QtWidgets import QDialog
+from qgis.PyQt.QtWidgets import QDialog, QMessageBox, QFileDialog, QDialogButtonBox
 from qgis.PyQt.QtCore import QVariant
 import numpy as np
 
@@ -19,6 +20,8 @@ class WeightsDialog(BASE, WIDGET):
         self.setupUi(self)
 
         self.layer = layer
+        self.weights = None
+        self.weight_data = None
         
         if layer is not None:
             field_names = [f.name() for f in layer.fields()]
@@ -56,6 +59,15 @@ class WeightsDialog(BASE, WIDGET):
         self.varMetricCombo.currentIndexChanged.connect(lambda _: self._update_var_bandwidth())
         self.buttonBox.accepted.connect(self.accept)
         self.buttonBox.rejected.connect(self.reject)
+        self.createButton = self.buttonBox.addButton(self.tr('Create'), QDialogButtonBox.ActionRole)
+        self.createButton.clicked.connect(self.create_weights)
+        self.weightFileButton.setEnabled(False)
+        self.weightFileButton.clicked.connect(self.export_weight_file)
+        self.mainTab.currentChanged.connect(self._main_tab_changed)
+        self._main_tab_changed(self.mainTab.currentIndex())
+        # OK button disabled until weights are created
+        self.okButton = self.buttonBox.button(QDialogButtonBox.Ok)
+        self.okButton.setEnabled(False)
 
         # defaults per PySAL recommendations
         self.knnSpin.setValue(4)
@@ -83,6 +95,11 @@ class WeightsDialog(BASE, WIDGET):
         self.includeLowerCheck.setEnabled(enabled)
         if not enabled:
             self.includeLowerCheck.setChecked(False)
+
+    def _main_tab_changed(self, index):
+        """Show method controls only for Contiguity/Distance tabs."""
+        show_methods = index != self.mainTab.indexOf(self.reportTab)
+        self.methodTabs.setVisible(show_methods)
 
     def _calc_default_bandwidth(self, coords, p=2):
         """Return max of each point's nearest neighbour distance."""
@@ -157,7 +174,14 @@ class WeightsDialog(BASE, WIDGET):
                 w = weights.util.block_weights(gdf[block_col], ids=gdf[id_field])
             order = self.orderSpin.value()
             if order > 1:
-                w = w.higher_order(order, self.includeLowerCheck.isChecked())
+                if self.includeLowerCheck.isChecked():
+                    mat = w.sparse.copy()
+                    for k in range(2, order + 1):
+                        mat = mat + weights.higher_order(w, k).sparse
+                    mat = mat.sign()
+                    w = weights.WSP(mat, ids=w.ids).to_W()
+                else:
+                    w = weights.higher_order(w, order)
             if self.rowStdCheck.isChecked():
                 w.transform = 'R'
             else:
@@ -257,53 +281,52 @@ class WeightsDialog(BASE, WIDGET):
             w.transform = 'B'
         return w
 
-
     def weight_summary(self, w):
         """Return a text summary describing the selected weights."""
-        parts = []
+        lines = []
         if self.mainTab.currentIndex() == 0:
-            first_line = 'Contiguity Based'
-            parts.append(f"Method: {self.contiguityCombo.currentText()}")
-            parts.append(f"Precision threshold: {self.precisionSpin.value()}")
+            lines.append('Contiguity Based')
+            lines.append(f"Method: {self.contiguityCombo.currentText()}")
+            lines.append(f"Precision threshold: {self.precisionSpin.value()}")
             order = self.orderSpin.value()
-            parts.append(f"Order: {order}")
+            lines.append(f"Order: {order}")
             if order > 1:
                 inc = 'Yes' if self.includeLowerCheck.isChecked() else 'No'
-                parts.append(f"Include lower orders: {inc}")
+                lines.append(f"Include lower orders: {inc}")
         else:
             if self.distanceTypeTabs.currentIndex() == 0:
-                first_line = 'Distance-Centroid Based'
-                parts.append(f"Distance metric: {self.geomMetricCombo.currentText()}")
+                lines.append('Distance-Centroid Based')
+                lines.append(f"Distance metric: {self.geomMetricCombo.currentText()}")
             else:
-                first_line = 'Distance-Variables Based'
+                lines.append('Distance-Variables Based')
                 vars_selected = [i.text() for i in self.variablesList.selectedItems()]
-                parts.append('Variables: {}'.format(', '.join(vars_selected)))
-                parts.append(f"Transform: {self.transformCombo.currentText()}")
-                parts.append(f"Distance metric: {self.varMetricCombo.currentText()}")
+                lines.append('Variables: {}'.format(', '.join(vars_selected)))
+                lines.append(f"Transform: {self.transformCombo.currentText()}")
+                lines.append(f"Distance metric: {self.varMetricCombo.currentText()}")
 
             m_idx = self.methodTabs.currentIndex()
             if m_idx == 0:
-                parts.append('Method: Distance Band')
-                parts.append(f"Bandwidth: {self.bandwidthSpin.value()}")
+                lines.append('Method: Distance Band')
+                lines.append(f"Bandwidth: {self.bandwidthSpin.value()}")
                 if self.bandInverseCheck.isChecked():
-                    parts.append(f"Inverse distance power: {self.bandPowerSpin.value()}")
+                    lines.append(f"Inverse distance power: {self.bandPowerSpin.value()}")
             elif m_idx == 1:
-                parts.append('Method: K-nearest neighbors')
-                parts.append(f"k: {self.knnSpin.value()}")
+                lines.append('Method: K-nearest neighbors')
+                lines.append(f"k: {self.knnSpin.value()}")
                 if self.knnInverseCheck.isChecked():
-                    parts.append(f"Inverse distance power: {self.knnPowerSpin.value()}")
+                    lines.append(f"Inverse distance power: {self.knnPowerSpin.value()}")
             else:
-                parts.append('Method: Kernel')
-                parts.append(f"Function: {self.kernelFunctionCombo.currentText()}")
+                lines.append('Method: Kernel')
+                lines.append(f"Function: {self.kernelFunctionCombo.currentText()}")
                 if self.adaptiveBandwidthRadio.isChecked():
-                    parts.append(f"Adaptive bandwidth k: {self.kernelNeighborsSpin.value()}")
+                    lines.append(f"Adaptive bandwidth k: {self.kernelNeighborsSpin.value()}")
                 elif self.maxKnnRadio.isChecked():
-                    parts.append(f"Max knn bandwidth k: {self.kernelNeighborsSpin.value()}")
+                    lines.append(f"Max knn bandwidth k: {self.kernelNeighborsSpin.value()}")
                 else:
-                    parts.append(f"Bandwidth: {self.kernelBandwidthSpin.value()}")
-                parts.append(f"Diagonal treatment: {self.diagOptionCombo.currentText()}")
+                    lines.append(f"Bandwidth: {self.kernelBandwidthSpin.value()}")
+                lines.append(f"Diagonal treatment: {self.diagOptionCombo.currentText()}")
 
-        parts.extend([
+        lines.extend([
             f"Observations: {w.n}",
             f"Min neighbors: {w.min_neighbors}",
             f"Max neighbors: {w.max_neighbors}",
@@ -311,4 +334,58 @@ class WeightsDialog(BASE, WIDGET):
             f"Percent nonzero: {w.pct_nonzero:.2f}",
             f"Islands: {len(w.islands)}",
         ])
-        return first_line + '\n' + ', '.join(parts)
+        return '\n'.join(lines)
+
+    def _layer_to_gdf(self, layer):
+        import geopandas as gpd
+        from shapely import wkb
+
+        fields = [f.name() for f in layer.fields()]
+        records = []
+        for feat in layer.getFeatures():
+            attrs = {name: feat[name] for name in fields}
+            attrs['geometry'] = wkb.loads(bytes(feat.geometry().asWkb()))
+            records.append(attrs)
+        return gpd.GeoDataFrame(records, geometry='geometry', crs=layer.sourceCrs().toWkt())
+
+    def create_weights(self):
+        if self.layer is None:
+            return
+        gdf = self._layer_to_gdf(self.layer)
+        try:
+            w = self.build_weights(gdf)
+        except Exception as exc:  # pragma: no cover - runtime
+            QMessageBox.warning(self, self.tr('Weights'), str(exc))
+            return
+        summary = self.weight_summary(w)
+        self.reportText.setPlainText(summary)
+        self.mainTab.setCurrentIndex(self.mainTab.indexOf(self.reportTab))
+        self._main_tab_changed(self.mainTab.currentIndex())
+        self.weights = w
+        self.weight_data = {
+            'weights': w,
+            'id_field': self.idFieldCombo.currentText(),
+            'summary': summary
+        }
+        self.weightFileButton.setEnabled(True)
+        self.okButton.setEnabled(True)
+
+    def export_weight_file(self):
+        if not self.weight_data:
+            return
+        path, _ = QFileDialog.getSaveFileName(self, self.tr('Save Weight Matrix'), '', 'CSV files (*.csv)')
+        if not path:
+            return
+        w = self.weight_data['weights']
+        mat, ids = w.full()
+        with open(path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['id'] + ids)
+            for i, rid in enumerate(ids):
+                writer.writerow([rid] + list(mat[i]))
+
+    def accept(self):
+        if not self.weight_data:
+            QMessageBox.warning(self, self.tr('Weights'), self.tr('No weight matrix has been created.'))
+            return
+        super().accept()

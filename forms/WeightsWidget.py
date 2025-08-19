@@ -3,7 +3,14 @@
 
 from processing.gui.wrappers import WidgetWrapper, DIALOG_STANDARD
 from processing.tools import dataobjects
-from qgis.PyQt.QtWidgets import QPushButton, QWidget, QHBoxLayout
+from qgis.PyQt.QtWidgets import (
+    QPushButton,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGroupBox,
+    QSizePolicy
+)
 from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import QgsProcessingUtils, QgsMessageLog, Qgis
 
@@ -20,12 +27,30 @@ class WeightsWidgetWrapper(WidgetWrapper):
     def createWidget(self, **_):
         if self.dialogType == DIALOG_STANDARD:
             container = QWidget()
-            layout = QHBoxLayout(container)
+            layout = QVBoxLayout(container)
             layout.setContentsMargins(0, 0, 0, 0)
-            self.button = QPushButton(self.tr('Weight Manager'))
-            self.button.clicked.connect(self.openDialog)
+            self.testGroup = QGroupBox(self.tr(''))
+            self.testGroup.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-            layout.addWidget(self.button)
+            group_layout = QHBoxLayout()
+            group_layout.setContentsMargins(4, 4, 4, 4)
+            group_layout.setSpacing(4)   # 버튼 사이 여백만 남김
+
+            self.button = QPushButton(self.tr('Weight Manager'))
+            self.button.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+            self.button.clicked.connect(self.openDialog)
+            group_layout.addWidget(self.button)
+
+            self.testButton = QPushButton(self.tr('Test'))
+            self.testButton.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+            self.testButton.clicked.connect(self.openTestDialog)
+            group_layout.addWidget(self.testButton)
+
+            # group_layout.addStretch()
+            self.testGroup.setLayout(group_layout)
+            layout.addWidget(self.testGroup)
+
             return container
 
     def postInitialize(self, wrappers):
@@ -46,34 +71,23 @@ class WeightsWidgetWrapper(WidgetWrapper):
         from spatial_analysis.forms.WeightsDialog import WeightsDialog
         dlg = WeightsDialog(self.layer)
         if dlg.exec_():
-            gdf = self._layer_to_gdf(self.layer)
-            try:
-                w = dlg.build_weights(gdf)
-            except Exception as exc:  # pragma: no cover - dialog runtime
-                QgsMessageLog.logMessage(str(exc), 'spatial_analysis', Qgis.Critical)
-                return
-            summary = dlg.weight_summary(w)
-            self.weight_data = {
-                'weights': w,
-                'id_field': dlg.idFieldCombo.currentText(),
-                'summary': summary
-            }
-            dialog = self.dialog() if callable(self.dialog) else self.dialog
-            if dialog and hasattr(dialog, 'loadWeightSummary'):
-                dialog.loadWeightSummary(summary)
-            self.widgetValueHasChanged.emit(self)
+            data = dlg.weight_data
+            if data:
+                self.weight_data = data
+                self.widgetValueHasChanged.emit(self)
 
-    def _layer_to_gdf(self, layer):
-        import geopandas as gpd
-        from shapely import wkb
-
-        fields = [f.name() for f in layer.fields()]
-        records = []
-        for feat in layer.getFeatures():
-            attrs = {name: feat[name] for name in fields}
-            attrs['geometry'] = wkb.loads(bytes(feat.geometry().asWkb()))
-            records.append(attrs)
-        return gpd.GeoDataFrame(records, geometry='geometry', crs=layer.sourceCrs().toWkt())
+    def openTestDialog(self):
+        dlg_parent = self.dialog() if callable(self.dialog) else self.dialog
+        if not self.weight_data:
+            if dlg_parent:
+                dlg_parent.messageBar().pushInfo(
+                    '',
+                    self.tr('Weight Manager를 실행해 Weight Matrix를 만드세요')
+                )
+            return
+        from spatial_analysis.forms.SpatialAutocorrelationDialog import SpatialAutocorrelationDialog
+        dlg = SpatialAutocorrelationDialog(self.layer, self.weight_data, dlg_parent)
+        dlg.exec_()
 
     def value(self):
         return self.weight_data
@@ -81,15 +95,7 @@ class WeightsWidgetWrapper(WidgetWrapper):
     def setValue(self, value):
         self.weight_data = value
         dialog = self.dialog() if callable(self.dialog) else self.dialog
-        if value and dialog and hasattr(dialog, 'loadWeightSummary'):
-            dialog.loadWeightSummary(value.get('summary', ''))
         return True
-
-    def _summarize_weights(self, w):
-        import numpy as np
-        card = np.array([len(nbrs) for nbrs in w.neighbors.values()])
-        return self.tr('n={0}, mean={1:.2f}, min={2}, max={3}').format(
-            w.n, card.mean(), card.min(), card.max())
 
     def tr(self, string):
         return QCoreApplication.translate('WeightsWidgetWrapper', string)

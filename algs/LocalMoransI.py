@@ -100,7 +100,7 @@ class LocalMoransI(QgisAlgorithm):
             [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
         weights_param = QgsProcessingParameterString(
             self.WEIGHTS_BTN,
-            self.tr('Weights'),
+            self.tr('Spatial Autocorrelation'),
             '', True)
         weights_param.setMetadata({'widget_wrapper': {
             'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
@@ -245,6 +245,7 @@ class LocalMoransI(QgisAlgorithm):
         renderer = QgsCategorizedSymbolRenderer('Cluster', categories)
         result_layer.setRenderer(renderer)
         result_layer.triggerRepaint()
+        result_layer.setName("Local Moran's i")
 
         # QML 스타일 파일을 임시로 저장
         style_path = os.path.join(QgsProcessingUtils.tempFolder(), 'local_moran_cluster.qml')

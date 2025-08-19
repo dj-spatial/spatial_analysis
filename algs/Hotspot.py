@@ -29,6 +29,7 @@ __revision__ = '$Format:%H$'
 
 import os
 import codecs
+import numpy as np
 
 from qgis.PyQt.QtCore import QVariant, QUrl
 from qgis.PyQt.QtGui import QIcon, QColor
@@ -55,8 +56,10 @@ from processing.algs.qgis.QgisAlgorithm import QgisAlgorithm
 # pysal modules - these may not be available in all environments
 try:
     from esda.getisord import G_Local
+    from libpysal import weights as lp_weights
 except Exception as e:  # pragma: no cover - library might be missing
     G_Local = None
+    lp_weights = None
 
 pluginPath = os.path.split(os.path.split(os.path.dirname(__file__))[0])[0]
 
@@ -95,7 +98,7 @@ class Hotspot(QgisAlgorithm):
             [QgsProcessing.TypeVectorPolygon, QgsProcessing.TypeVectorPoint]))
         weights_param = QgsProcessingParameterString(
             self.WEIGHTS_BTN,
-            self.tr('Weights'),
+            self.tr('Spatial Autocorrelation'),
             '', True)
         weights_param.setMetadata({'widget_wrapper': {
             'class': 'spatial_analysis.forms.WeightsWidget.WeightsWidgetWrapper',
@@ -147,6 +150,11 @@ class Hotspot(QgisAlgorithm):
         w = weight_info['weights']
         id_field = weight_info['id_field']
 
+        # Ensure weights matrix uses floating point values to avoid
+        # numba dtype issues within esda's G_Local implementation
+        if lp_weights is not None and getattr(w.sparse, 'dtype', None) != np.float64:
+            w = lp_weights.WSP(w.sparse.astype('float64'), ids=w.ids).to_W()
+
         id_to_feat = {}
         id_to_val = {}
         for f in layer.getFeatures():
@@ -155,10 +163,17 @@ class Hotspot(QgisAlgorithm):
             id_to_val[fid] = f[field_name]
 
         try:
-            values = [id_to_val[i] for i in w.id_order]
+            values = np.asarray([id_to_val[i] for i in w.id_order], dtype=np.float64)
         except KeyError:
             raise QgsProcessingException(self.tr('ID field mismatch between weights and layer.'))
 
+        if not np.isfinite(values).all():
+            raise QgsProcessingException(self.tr('Selected field contains missing or infinite values.'))
+
+         # 가중치 행렬도 float64 보장(안전망)
+        if lp_weights is not None and getattr(w.sparse, 'dtype', None) != np.float64:
+            w = lp_weights.WSP(w.sparse.astype(np.float64), ids=w.ids).to_W()
+ 
         g = G_Local(values, w, n_jobs=1)
 
         fields = layer.fields()
@@ -213,10 +228,14 @@ class Hotspot(QgisAlgorithm):
         renderer = QgsCategorizedSymbolRenderer('GiSig', categories)
         result_layer.setRenderer(renderer)
         result_layer.triggerRepaint()
+        result_layer.setName('Gi*')
         style_path = os.path.join(QgsProcessingUtils.tempFolder(), 'hotspot_gistar.qml')
         result_layer.saveNamedStyle(style_path)
         if context.willLoadLayerOnCompletion(dest_id):
-            context.layersToLoadOnCompletion()[dest_id].style = style_path
+            details = context.layersToLoadOnCompletion()[dest_id]
+            details.name = 'Gi*'      # 완료 후 자동 로드될 때 표시 이름 지정
+            details.style = style_path
+
         weight_report = self.parameterAsFileOutput(parameters, self.WEIGHT_REPORT, context)
         summary = weight_info.get('summary', '')
         with codecs.open(weight_report, 'w', encoding='utf-8') as f:

@@ -116,7 +116,7 @@ class SpatialRegression(QgisAlgorithm):
 
         weights_param = QgsProcessingParameterString(
             self.WEIGHTS_BTN,
-            self.tr('Weights'),
+            self.tr('Spatial Autocorrelation'),
             '',
             optional=False)
         weights_param.setMetadata({'widget_wrapper': {
@@ -197,9 +197,11 @@ class SpatialRegression(QgisAlgorithm):
 
         predictions = model.predy.flatten()
         actual = y.flatten()
-        residuals = actual - predictions
+        if hasattr(model, 'u'):
+            residuals = model.u.flatten()
+        else:
+            residuals = actual - predictions
         pred_errors = predictions - actual
-
 
         fields = layer.fields()
         new_fields = QgsFields()
@@ -222,6 +224,12 @@ class SpatialRegression(QgisAlgorithm):
             attrs = f.attributes() + [float(predictions[idx]), float(residuals[idx]), float(pred_errors[idx])]
             out_f.setAttributes(attrs)
             sink.addFeature(out_f, QgsFeatureSink.FastInsert)
+
+        # name output layer according to model
+        result_layer = QgsProcessingUtils.mapLayerFromString(dest_id, context)
+        model_names = ['OLS', 'SLM', 'SEM']
+        if result_layer:
+            result_layer.setName(model_names[model_idx])
 
         output_report = self.parameterAsFileOutput(parameters, self.OUTPUT_REPORT, context)
         summary_text = (
