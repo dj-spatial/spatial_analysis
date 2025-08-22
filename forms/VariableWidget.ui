@@ -2,22 +2,13 @@
 <ui version="4.0">
  <class>Form</class>
  <widget class="QWidget" name="Form">
-  <property name="enabled">
-   <bool>true</bool>
-  </property>
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>416</width>
-    <height>28</height>
+    <height>200</height>
    </rect>
-  </property>
-  <property name="sizePolicy">
-   <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
-   </sizepolicy>
   </property>
   <property name="windowTitle">
    <string>Form</string>
@@ -32,24 +23,8 @@
    <property name="bottomMargin">
     <number>2</number>
    </property>
-   <item row="0" column="3">
-    <widget class="QgsCheckableComboBox" name="fieldCB">
-     <property name="enabled">
-      <bool>false</bool>
-     </property>
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-    </widget>
-   </item>
-   <item row="0" column="1">
+   <item row="0" column="0">
     <widget class="QRadioButton" name="geom">
-     <property name="enabled">
-      <bool>true</bool>
-     </property>
      <property name="text">
       <string>GEOMETRY</string>
      </property>
@@ -61,11 +36,8 @@
      </attribute>
     </widget>
    </item>
-   <item row="0" column="2">
+   <item row="0" column="1">
     <widget class="QRadioButton" name="attrsRB">
-     <property name="enabled">
-      <bool>true</bool>
-     </property>
      <property name="text">
       <string>ATTRIBUTES</string>
      </property>
@@ -74,35 +46,22 @@
      </attribute>
     </widget>
    </item>
-   <item row="0" column="4">
+   <item row="0" column="2">
     <widget class="QCheckBox" name="checkBox">
      <property name="text">
       <string>Normalize</string>
      </property>
     </widget>
    </item>
-   <item row="0" column="5">
-    <spacer name="horizontalSpacer">
-     <property name="orientation">
-      <enum>Qt::Horizontal</enum>
+   <item row="1" column="0" colspan="3">
+    <widget class="QListWidget" name="fieldLW">
+     <property name="enabled">
+      <bool>false</bool>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>40</width>
-       <height>20</height>
-      </size>
-     </property>
-    </spacer>
+    </widget>
    </item>
   </layout>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>QgsCheckableComboBox</class>
-   <extends>QComboBox</extends>
-   <header>qgscheckablecombobox.h</header>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
  <buttongroups>

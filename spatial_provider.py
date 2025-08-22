@@ -64,13 +64,17 @@ class SampleFileAlgorithm(QgsProcessingAlgorithm):
     def __init__(self, file_path):
         super().__init__()
         self._path = file_path
-        self._name = os.path.splitext(os.path.basename(file_path))[0]
+        base_name = os.path.basename(file_path)
+        # Use the filename (with extension) to ensure uniqueness of algorithm IDs
+        self._alg_id = base_name.replace(".", "_")
+        # Layer name should exclude the extension
+        self._layer_name = os.path.splitext(base_name)[0]
         self._is_vector = file_path.lower().endswith(
             (".shp", ".gpkg", ".geojson", ".json", ".csv")
         )
 
     def name(self):
-        return self._name
+        return self._alg_id
 
     def displayName(self):
         return os.path.basename(self._path)
@@ -89,12 +93,20 @@ class SampleFileAlgorithm(QgsProcessingAlgorithm):
 
     def processAlgorithm(self, parameters, context, feedback):
         if self._is_vector:
-            layer = QgsVectorLayer(self._path, self._name, "ogr")
+            layer = QgsVectorLayer(self._path, self._layer_name, "ogr")
         else:
-            layer = QgsRasterLayer(self._path, self._name)
+            layer = QgsRasterLayer(self._path, self._layer_name)
         if not layer.isValid():
             raise QgsProcessingException(f"Could not load sample file: {self._path}")
         QgsProject.instance().addMapLayer(layer)
+        try:
+            from qgis.utils import iface
+
+            if iface is not None:
+                iface.setActiveLayer(layer)
+                iface.zoomToActiveLayer()
+        except Exception:
+            pass
         return {"OUTPUT": layer}
 
     def createInstance(self):

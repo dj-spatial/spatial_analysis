@@ -10,7 +10,7 @@ version=0.1.4
 author=D.J Paek
 email=dj.paek1@gmail.com
 
-about=Spatial Analyzer provides several spatial analysis tools including:</br>1.spatial central tendency</br> - mean center</br> - median center</br> - central feature</br>2.spatial dispersion</br> - standard distance</br> - standard deviation ellipse</br>3. cluster analysis</br> - k-mean</br> - hierarchial</br> - DBscan</br>4. dimension reduction</br> - PCA</br> - t-SNE</br>
+about=Spatial Analyzer provides several spatial analysis tools including:</br>1.spatial central tendency</br> - mean center</br> - median center</br> - central feature</br>2.spatial dispersion</br> - standard distance</br> - standard deviation ellipse</br>3. cluster analysis</br> - k-mean</br> - hierarchial</br> - DBscan</br>
 
 tracker=https://github.com/dj-spatial/spatial_analysis/issues
 repository=https://github.com/dj-spatial/spatial_analysis
@@ -27,7 +27,7 @@ changelog=
 	- added functionality of cophenetic distance distribution in hiearchical clustering
   
 # Tags are comma separated with spaces allowed
-tags=mean center,median center,central feature,standard distance, standard distance ellipse, cluster, accumulated mean center, PCA, t-SNE
+tags=mean center,median center,central feature,standard distance, standard distance ellipse, cluster, accumulated mean center
 
 homepage=https://github.com/dj-spatial/spatial_analysis
 category=Spatial Analysis, Vector
