@@ -70,7 +70,7 @@ class Pca(QgisAlgorithm):
     REPORT = 'REPORT'
 
     def icon(self):
-        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'browser.svg'))
+        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'dimension.svg'))
 
     def group(self):
         return self.tr('Dimension Reduction')
@@ -159,7 +159,11 @@ class Pca(QgisAlgorithm):
             data_proc = (data - meanv) / rangev
 
         if data_proc.shape[1] < n_comp:
-            raise QgsProcessingException(self.tr('Number of components exceeds number of variables'))
+            feedback.pushInfo(
+                self.tr('Reducing components from {0} to {1} to match selected variables')
+                .format(n_comp, data_proc.shape[1])
+            )
+            n_comp = data_proc.shape[1]
 
         if method == 'svd':
             u, s, vh = np.linalg.svd(data_proc, full_matrices=False)

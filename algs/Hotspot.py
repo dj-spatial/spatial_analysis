@@ -74,7 +74,7 @@ class Hotspot(QgisAlgorithm):
 
     def icon(self):
         # reuse clustering icon
-        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'cluster.svg'))
+        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'hotspot.svg'))
 
     def group(self):
         return self.tr('Hot Spot Analysis')

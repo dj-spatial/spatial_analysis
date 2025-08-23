@@ -76,6 +76,12 @@ class SampleFileAlgorithm(QgsProcessingAlgorithm):
     def name(self):
         return self._alg_id
 
+    def icon(self):
+        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'sample_folder.svg'))
+
+    def svgIconPath(self):
+        return os.path.join(pluginPath, 'spatial_analysis', 'sample_folder.svg')
+
     def displayName(self):
         return os.path.basename(self._path)
 

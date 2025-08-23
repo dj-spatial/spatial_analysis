@@ -28,11 +28,12 @@ __revision__ = '$Format:%H$'
 
 import os
 import numpy as np
+import inspect
 import tempfile
 import matplotlib
-import inspect
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 plt.rcParams['font.sans-serif'] = ['Malgun Gothic', 'AppleGothic', 'NanumGothic', 'DejaVu Sans', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -75,13 +76,15 @@ class Tsne(QgisAlgorithm):
     DISTANCE = 'DISTANCE'
     CATEGORY = 'CATEGORY'
     TRANSFORMATION = 'TRANSFORMATION'
+    BACKEND = 'BACKEND'
     USE_SEED = 'USE_SEED'
     SEED = 'SEED'
+    SHOW_EVOLUTION = 'SHOW_EVOLUTION'
     OUTPUT = 'OUTPUT'
     REPORT = 'REPORT'
 
     def icon(self):
-        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'browser.svg'))
+        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'dimension.svg'))
 
     def group(self):
         return self.tr('Dimension Reduction')
@@ -156,6 +159,14 @@ class Tsne(QgisAlgorithm):
             ['Standardize (Z)', 'Standardize MAD', 'Range Adjust', 'Range Standardize', 'Raw', 'Demean'],
             defaultValue=0
         ))
+        backend_param = QgsProcessingParameterEnum(
+            self.BACKEND,
+            self.tr('Backend'),
+            ['openTSNE', 'scikit-learn'],
+            defaultValue=0
+        )
+        backend_param.setMetadata({'widget_wrapper': {'useRadioButtons': True}})
+        self.addParameter(backend_param)
         self.addParameter(QgsProcessingParameterBoolean(self.USE_SEED,
                                                         self.tr('Use Specified Seed'),
                                                         False))
@@ -163,6 +174,9 @@ class Tsne(QgisAlgorithm):
                                                        self.tr('Seed'),
                                                        QgsProcessingParameterNumber.Integer,
                                                        0, True))
+        self.addParameter(QgsProcessingParameterBoolean(self.SHOW_EVOLUTION,
+                                                        self.tr('View iteration embedding process'),
+                                                        False))
         self.addParameter(QgsProcessingParameterFeatureSink(self.OUTPUT,
                                                             self.tr('Output Layer'),
                                                             QgsProcessing.TypeVector))
@@ -170,14 +184,30 @@ class Tsne(QgisAlgorithm):
 
 
     def processAlgorithm(self, parameters, context, feedback):
-        try:  # reference pysal and t-SNE backend
+        try:
             import libpysal  # noqa: F401
-            try:
-                from openTSNE import TSNE  # prefer openTSNE if available
-            except Exception:
-                from sklearn.manifold import TSNE  # fall back to scikit-learn
         except Exception as e:  # pragma: no cover - library may be missing
-            raise QgsProcessingException(self.tr('Required libraries not found: {}').format(e))
+            raise QgsProcessingException(
+                self.tr('Required libraries not found or incomplete: {}').format(e)
+            )
+
+        backend_idx = self.parameterAsEnum(parameters, self.BACKEND, context)
+        if backend_idx == 0:
+            try:
+                from openTSNE import TSNE as OTSNE
+            except Exception as e:  # pragma: no cover - library may be missing
+                raise QgsProcessingException(
+                    self.tr('openTSNE library not found or incomplete: {}').format(e)
+                )
+        else:
+            try:
+                from sklearn.manifold import TSNE as SKTSNE
+            except Exception as e:  # pragma: no cover - library may be missing
+                raise QgsProcessingException(
+                    self.tr('scikit-learn library not found or incomplete: {}').format(e)
+                )
+            sig = inspect.signature(SKTSNE.__init__)
+            iter_kw = 'n_iter' if 'n_iter' in sig.parameters else 'max_iter'
 
         layer = self.parameterAsSource(parameters, self.INPUT, context)
         fields = self.parameterAsFields(parameters, self.FIELDS, context)
@@ -196,6 +226,7 @@ class Tsne(QgisAlgorithm):
             self.parameterAsEnum(parameters, self.TRANSFORMATION, context)]
         use_seed = self.parameterAsBoolean(parameters, self.USE_SEED, context)
         seed = self.parameterAsInt(parameters, self.SEED, context) if use_seed else None
+        show_evolution = self.parameterAsBoolean(parameters, self.SHOW_EVOLUTION, context)
 
         feats = list(layer.getFeatures())
         data = [[f[fld] for fld in fields] for f in feats]
@@ -221,48 +252,149 @@ class Tsne(QgisAlgorithm):
         else:
             data_proc = data
 
-        log_interval = 50
+        if backend_idx == 0:  # openTSNE
+            if show_evolution:
+                iterations = []
+                errors = []
+                embeddings = []
+                log_interval = max(1, max_iter // 200)
 
-        def _callback(iteration, error, embedding):
-            feedback.pushInfo(f'Iteration {iteration}: error is {error}')
-            if iteration % (log_interval * 10) == 0 or iteration == max_iter:
-                fig, ax = plt.subplots(figsize=(12, 8))
-                ax.scatter(embedding[:, 0], embedding[:, 1], s=10)
-                ax.set_title(f'Iteration {iteration}')
-                img_path = os.path.join(tempfile.gettempdir(), f'tsne_{iteration}.png')
-                fig.savefig(img_path)
-                plt.close(fig)
+                def _callback(iteration, error, embedding):
+                    iterations.append(iteration)
+                    errors.append(error)
+                    embeddings.append(embedding.copy())
+                    return False
 
-        params = {
-            'n_components': 2,
-            'perplexity': perplexity,
-            'learning_rate': learning_rate,
-            'metric': metric,
-            'random_state': seed,
-            'verbose': 0
-        }
+                params = {
+                    'n_components': 2,
+                    'perplexity': perplexity,
+                    'learning_rate': learning_rate,
+                    'metric': metric,
+                    'theta': theta,
+                    'n_iter': max_iter,
+                    'random_state': seed,
+                    'verbose': 0,
+                    'callbacks': _callback,
+                    'callbacks_every_iters': log_interval
+                }
+            else:
+                iterations = errors = embeddings = None
+                params = {
+                    'n_components': 2,
+                    'perplexity': perplexity,
+                    'learning_rate': learning_rate,
+                    'metric': metric,
+                    'theta': theta,
+                    'n_iter': max_iter,
+                    'random_state': seed,
+                    'verbose': 0
+                }
 
-        sig = inspect.signature(TSNE.__init__)
-        if 'angle' in sig.parameters:
-            params['angle'] = theta
-        if 'init' in sig.parameters:
-            params['init'] = 'random'
-        if 'n_iter' in sig.parameters:
-            params['n_iter'] = max_iter
-        elif 'max_iter' in sig.parameters:
-            params['max_iter'] = max_iter
-        if 'callbacks' in sig.parameters and 'callbacks_every_iters' in sig.parameters:
-            params['callbacks'] = _callback
-            params['callbacks_every_iters'] = log_interval
-            tsne = TSNE(**params)
-            transformed = tsne.fit(data_proc)
+            tsne = OTSNE(**params)
+            transformed = np.asarray(tsne.fit(data_proc))
             final_cost = getattr(tsne, 'kl_divergence_', float('nan'))
-        else:
-            tsne = TSNE(**params)
-            transformed = tsne.fit_transform(data_proc)
-            final_cost = getattr(tsne, 'kl_divergence_', float('nan'))
-        feedback.pushInfo(self.tr('final cost: {}').format(final_cost))
+            if show_evolution:
+                frames = embeddings[:-1]
+                frame_iters = iterations[:-1]
+            else:
+                frames = frame_iters = None
 
+        else:  # scikit-learn
+            if show_evolution:
+                if max_iter < 250:
+                    raise QgsProcessingException(self.tr('scikit-learn backend requires max_iter >= 250'))
+                log_interval = max(250, max_iter // 200)
+                iterations = []
+                errors = []
+                embeddings = []
+                current_iter = 0
+                current_init = 'random'
+                while current_iter < max_iter:
+                    step = min(log_interval, max_iter - current_iter)
+                    step = max(250, step)
+                    params = {
+                        'n_components': 2,
+                        'perplexity': perplexity,
+                        'learning_rate': learning_rate,
+                        'metric': metric,
+                        iter_kw: step,
+                        'init': current_init,
+                        'random_state': seed,
+                        'method': 'barnes_hut',
+                        'angle': theta,
+                        'verbose': 0
+                    }
+                    tsne = SKTSNE(**params)
+                    emb = tsne.fit_transform(data_proc)
+                    current_iter += step
+                    iterations.append(current_iter)
+                    errors.append(getattr(tsne, 'kl_divergence_', float('nan')))
+                    embeddings.append(emb)
+                    current_init = emb
+                transformed = embeddings[-1]
+                final_cost = errors[-1]
+                frames = []
+                frame_iters = []
+                for i in range(len(embeddings) - 1):
+                    start = embeddings[i]
+                    end = embeddings[i + 1]
+                    it_start = iterations[i]
+                    it_end = iterations[i + 1]
+                    for t in np.linspace(0, 1, 5, endpoint=False):
+                        frames.append(start * (1 - t) + end * t)
+                        frame_iters.append(int(it_start + (it_end - it_start) * t))
+            else:
+                params = {
+                    'n_components': 2,
+                    'perplexity': perplexity,
+                    'learning_rate': learning_rate,
+                    'metric': metric,
+                    iter_kw: max_iter,
+                    'init': 'random',
+                    'random_state': seed,
+                    'method': 'barnes_hut',
+                    'angle': theta,
+                    'verbose': 0
+                }
+                tsne = SKTSNE(**params)
+                transformed = tsne.fit_transform(data_proc)
+                final_cost = getattr(tsne, 'kl_divergence_', float('nan'))
+                iterations = errors = frames = frame_iters = None
+
+        gif_path = None
+        feedback.pushInfo('t-SNE:')
+        feedback.pushInfo('final cost:{:.6f}'.format(final_cost))
+
+        if show_evolution and iterations:
+            for it, err in zip(reversed(iterations), reversed(errors)):
+                feedback.pushInfo('Iteration {}: error is {:.6f}'.format(it, err))
+            # build animation from collected embeddings excluding final result
+            try:
+                if frames and len(frames) > 1:
+                    xs = np.concatenate([e[:, 0] for e in frames])
+                    ys = np.concatenate([e[:, 1] for e in frames])
+                    x_min, x_max = xs.min(), xs.max()
+                    y_min, y_max = ys.min(), ys.max()
+                    fig, ax = plt.subplots(figsize=(6, 4))
+                    scat = ax.scatter(frames[0][:, 0], frames[0][:, 1], s=10)
+                    ax.set_xlim(x_min, x_max)
+                    ax.set_ylim(y_min, y_max)
+                    ax.set_title('Iteration {}'.format(frame_iters[0]))
+
+                    def update(frame):
+                        scat.set_offsets(frames[frame])
+                        idx = min(frame, len(frame_iters) - 1)
+                        ax.set_title(f'Iteration {frame_iters[idx]}')
+                        return scat,
+
+                    ani = FuncAnimation(fig, update, frames=len(frames), interval=200, blit=True)
+                    gif_path = os.path.join(tempfile.gettempdir(), 'tsne_animation.gif')
+                    ani.save(gif_path, writer=PillowWriter(fps=10))
+                    plt.close(fig)
+            except Exception:
+                gif_path = None
+
+        feedback.pushInfo('Using no_dims = 2, perplexity = {}, and theta = {}'.format(2, perplexity, theta))
         new_fields = QgsFields(layer.fields())
         new_fields.append(QgsField('TSNE1', QVariant.Double))
         new_fields.append(QgsField('TSNE2', QVariant.Double))
@@ -297,11 +429,14 @@ class Tsne(QgisAlgorithm):
         fig.savefig(plot_path)
         plt.close(fig)
 
-        html = [
-            '<html><head><meta charset="utf-8"/></head><body>',
-            f'<img src="{plot_path}" alt="t-SNE Scatter Plot" style="width:100%;height:auto;"/>',
-            '</body></html>'
-        ]
+        plot_url = 'file://' + plot_path
+        html = ['<html><head><meta charset="utf-8"/></head><body>',
+                f'<img src="{plot_url}" alt="t-SNE Scatter Plot" style="width:100%;height:auto;"/>']
+        if gif_path:
+            gif_url = 'file://' + gif_path
+            html.append(f'<p>Iteration Animation:</p><img src="{gif_url}" '
+                       'alt="t-SNE Animation" style="width:100%;height:auto;"/>')
+        html.append('</body></html>')
         report_path = os.path.join(tempfile.gettempdir(), 'tsne_report.html')
         with open(report_path, 'w', encoding='utf-8') as f:
             f.write('\n'.join(html))
