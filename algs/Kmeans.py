@@ -156,6 +156,7 @@ class Kmeans(QgisAlgorithm):
         else:
             features = [[f[fld] for f in cLayer.getFeatures()] for fld in variable_fields]
             features = np.stack(features, axis = 1)
+        features = features.astype(float)
         if normalized:
             features = whiten(features)
             if_normalized = "Yes"

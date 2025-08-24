@@ -7,6 +7,8 @@ from qgis.core import (
     QgsWkbTypes,
     QgsMapLayerProxyModel,
     QgsRenderContext,
+    QgsField,
+    QgsFeature,
 )
 from qgis import processing
 from qgis.utils import iface
@@ -22,7 +24,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QFrame,
 )
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QVariant
 from PyQt5.QtGui import QPixmap, QColor
 
 import math
@@ -31,6 +33,7 @@ import tempfile
 import colorsys
 
 from .dbscan_animator import DBSCANAnimator
+from .VariableWidget import VariableWidget
 
 
 class ParameterControlDialog(QDialog):
@@ -67,7 +70,13 @@ class ParameterControlDialog(QDialog):
             lambda _=0: self.on_layer_changed(self.layer_combo.currentLayer())
         )
         layout.addWidget(self.layer_combo)
-        
+
+        # Variable selection (geometry or attributes + normalization)
+        self.variable_widget = VariableWidget()
+        self.variable_widget.hasChanged.connect(self.on_variable_changed)
+        layout.addWidget(self.variable_widget)
+        self.control_widgets.append(self.variable_widget)
+
         # MinPts
         self.minpts_label = QLabel("MinPts: -")
         layout.addWidget(self.minpts_label)
@@ -182,16 +191,21 @@ class ParameterControlDialog(QDialog):
 
     # ------------------------------------------------------------------
     def set_playing(self, playing):
+        geom_mode = self.variable_widget.v_type == "geom"
         self.layer_combo.setEnabled(not playing)
         self.run_btn.setEnabled(not playing)
-        self.play_btn.setEnabled(not playing)
-        self.clear_btn.setEnabled(not playing)
+        self.play_btn.setEnabled(geom_mode and not playing)
+        self.clear_btn.setEnabled(geom_mode and not playing)
         self.minpts_spin.setEnabled(not playing)
         self.minpts_label.setEnabled(not playing)
         self.eps_slider.setEnabled(not playing)
         self.eps_label.setEnabled(not playing)
-        self.pause_btn.setEnabled(playing)
-        self.stop_btn.setEnabled(playing)
+        self.interval_slider.setEnabled(geom_mode and not playing)
+        self.interval_label.setEnabled(geom_mode and not playing)
+        self.fill_alpha_slider.setEnabled(geom_mode and not playing)
+        self.fill_alpha_label.setEnabled(geom_mode and not playing)
+        self.pause_btn.setEnabled(geom_mode and playing)
+        self.stop_btn.setEnabled(geom_mode and playing)
 
     # ------------------------------------------------------------------
     def on_layer_changed(self, layer):
@@ -209,6 +223,8 @@ class ParameterControlDialog(QDialog):
                 self.layer = res["OUTPUT"]
             else:
                 self.layer = layer
+
+            self.variable_widget.setSource(self.layer)
 
             # 기본 파라미터 값을 초기화
             self.min_points = 4
@@ -253,6 +269,7 @@ class ParameterControlDialog(QDialog):
         else:
             self.layer = None
             self.layer_id = None
+            self.variable_widget.setSource(None)
             self.toggle_controls(False)
             self.eps_label.setText("Epsilon: Not set")
             self.minpts_label.setText("MinPts: -")
@@ -269,6 +286,17 @@ class ParameterControlDialog(QDialog):
         self.eps_slider.blockSignals(False)
         self.eps_label.setText(f"Epsilon: {self.eps:.2f}")
         self.update_eps_ratio()
+
+    # ------------------------------------------------------------------
+    def on_variable_changed(self):
+        if not self.layer:
+            return
+        if self.variable_widget.v_type == "attrs":
+            self.clear_canvas()
+        self.eps = self.compute_knn_kth_distance(self.min_points)
+        self.update_eps_slider()
+        self.refresh_plot()
+        self.set_playing(False)
 
     # ------------------------------------------------------------------
     def update_minpts(self, value):
@@ -316,55 +344,7 @@ class ParameterControlDialog(QDialog):
         if not self.layer:
             QMessageBox.warning(self, "No Layer", "벡터 레이어를 선택해야 합니다.")
             return
-
-        result = processing.run(
-            "native:dbscanclustering",
-            {
-                "INPUT": self.layer,
-                "EPS": self.eps,
-                "MIN_POINTS": self.min_points,
-                "OUTPUT": "memory:dbscan_result",
-            },
-        )
-        clustered_layer = result["OUTPUT"]
-        clustered_layer.setName("DBSCAN_Result")
-
-        features = list(clustered_layer.getFeatures())
-        cluster_ids = sorted(
-            {
-                f[self.cluster_field]
-                for f in features
-                if f[self.cluster_field] not in (None, -1)
-            }
-        )
-        color_map = {}
-        for i, cid in enumerate(cluster_ids):
-            h = (i / max(1, len(cluster_ids))) % 1.0
-            r, g, b = colorsys.hsv_to_rgb(h, 1.0, 1.0)
-            color_map[cid] = QColor(int(r * 255), int(g * 255), int(b * 255))
-
-        categories = [
-            QgsRendererCategory(
-                cid,
-                QgsMarkerSymbol.createSimple(
-                    {"name": "circle", "color": col.name(), "size": self.marker_size}
-                ),
-                f"Cluster {cid}",
-            )
-            for cid, col in color_map.items()
-        ]
-        categories.append(
-            QgsRendererCategory(
-                -1,
-                QgsMarkerSymbol.createSimple(
-                    {"name": "circle", "color": "black", "size": self.marker_size}
-                ),
-                "Noise",
-            )
-        )
-        renderer = QgsCategorizedSymbolRenderer(self.cluster_field, categories)
-        clustered_layer.setRenderer(renderer)
-
+        clustered_layer = self.build_cluster_layer()
         QgsProject.instance().addMapLayer(clustered_layer)
 
     # ------------------------------------------------------------------
@@ -413,13 +393,134 @@ class ParameterControlDialog(QDialog):
             self.toggle_controls(False)
 
     # ------------------------------------------------------------------
-    def compute_knn_kth_distance(self, k, eps_for_ratio=False):
+    def get_feature_matrix(self):
         feats = list(self.layer.getFeatures())
-        points = [f.geometry().asPoint() for f in feats]
+        if self.variable_widget.v_type == "attrs" and self.variable_widget.attrs:
+            data = [[f[attr] for attr in self.variable_widget.attrs] for f in feats]
+            if self.variable_widget.normalized:
+                cols = list(zip(*data))
+                means = [sum(col) / len(col) for col in cols]
+                stds = [
+                    math.sqrt(sum((x - m) ** 2 for x in col) / len(col))
+                    for col, m in zip(cols, means)
+                ]
+                data = [
+                    [
+                        (val - m) / s if s else 0
+                        for val, m, s in zip(row, means, stds)
+                    ]
+                    for row in data
+                ]
+            return feats, data
+        else:
+            points = [f.geometry().asPoint() for f in feats]
+            data = [[pt.x(), pt.y()] for pt in points]
+            return feats, data
+
+    # ------------------------------------------------------------------
+    def _euclidean(self, a, b):
+        return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)))
+
+    # ------------------------------------------------------------------
+    def _region_query(self, data, idx, eps):
+        return [i for i, row in enumerate(data) if self._euclidean(data[idx], row) <= eps]
+
+    # ------------------------------------------------------------------
+    def _expand_cluster(self, data, labels, visited, neighbors, cid, eps, min_pts):
+        i = 0
+        while i < len(neighbors):
+            n = neighbors[i]
+            if not visited[n]:
+                visited[n] = True
+                n_neighbors = self._region_query(data, n, eps)
+                if len(n_neighbors) >= min_pts:
+                    for nb in n_neighbors:
+                        if nb not in neighbors:
+                            neighbors.append(nb)
+            if labels[n] == -1:
+                labels[n] = cid
+            i += 1
+
+    # ------------------------------------------------------------------
+    def _dbscan(self, data, eps, min_pts):
+        n = len(data)
+        labels = [-1] * n
+        visited = [False] * n
+        cid = 0
+        for i in range(n):
+            if visited[i]:
+                continue
+            visited[i] = True
+            neighbors = self._region_query(data, i, eps)
+            if len(neighbors) < min_pts:
+                labels[i] = -1
+            else:
+                labels[i] = cid
+                self._expand_cluster(data, labels, visited, neighbors, cid, eps, min_pts)
+                cid += 1
+        return labels
+
+    # ------------------------------------------------------------------
+    def build_cluster_layer(self):
+        feats, data = self.get_feature_matrix()
+        labels = self._dbscan(data, self.eps, self.min_points)
+        crs = self.layer.crs().authid()
+        wkb = QgsWkbTypes.displayString(self.layer.wkbType())
+        new_layer = QgsVectorLayer(f"{wkb}?crs={crs}", "DBSCAN_Result", "memory")
+        prov = new_layer.dataProvider()
+        fields = self.layer.fields()
+        fields.append(QgsField(self.cluster_field, QVariant.Int))
+        prov.addAttributes(fields)
+        new_layer.updateFields()
+        new_feats = []
+        for f, lab in zip(feats, labels):
+            nf = QgsFeature(new_layer.fields())
+            nf.setGeometry(f.geometry())
+            nf.setAttributes(f.attributes() + [lab])
+            new_feats.append(nf)
+        prov.addFeatures(new_feats)
+
+        cluster_ids = sorted({lab for lab in labels if lab not in (None, -1)})
+        color_map = {}
+        for i, cid in enumerate(cluster_ids):
+            h = (i / max(1, len(cluster_ids))) % 1.0
+            r, g, b = colorsys.hsv_to_rgb(h, 1.0, 1.0)
+            color_map[cid] = QColor(int(r * 255), int(g * 255), int(b * 255))
+
+        categories = [
+            QgsRendererCategory(
+                cid,
+                QgsMarkerSymbol.createSimple(
+                    {"name": "circle", "color": col.name(), "size": self.marker_size}
+                ),
+                f"Cluster {cid}",
+            )
+            for cid, col in color_map.items()
+        ]
+        categories.append(
+            QgsRendererCategory(
+                -1,
+                QgsMarkerSymbol.createSimple(
+                    {"name": "circle", "color": "black", "size": self.marker_size}
+                ),
+                "Noise",
+            )
+        )
+        renderer = QgsCategorizedSymbolRenderer(self.cluster_field, categories)
+        new_layer.setRenderer(renderer)
+        return new_layer
+
+    # ------------------------------------------------------------------
+    def compute_knn_kth_distance(self, k, eps_for_ratio=False):
+        feats, data = self.get_feature_matrix()
         kth_dists = []
-        for i, pt1 in enumerate(points):
+        for i, row in enumerate(data):
             dist = sorted(
-                [math.hypot(pt1.x() - pt2.x(), pt1.y() - pt2.y()) for j, pt2 in enumerate(points) if i != j]
+                [
+                    self._euclidean(row, data[j])
+                    for j in range(len(data))
+                    if i != j
+                ]
             )
             if len(dist) >= k:
                 kth_dists.append(dist[k - 1])

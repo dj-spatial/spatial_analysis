@@ -15,7 +15,6 @@ from PyQt5.QtGui import QColor
 import math
 import colorsys
 from collections import defaultdict
-from qgis import processing
 
 
 class DBSCANAnimator:
@@ -31,7 +30,6 @@ class DBSCANAnimator:
         self.timer.timeout.connect(self.step)
 
         self.index = 0
-        self.clustered_layer = None
         self.features = []
         self.color_map = {}
         self.transform = None
@@ -60,21 +58,10 @@ class DBSCANAnimator:
         """Run DBSCAN and prepare animation objects."""
         self.clear_rubbers()
         self.index = 0
-
-        result = processing.run(
-            "native:dbscanclustering",
-            {
-                "INPUT": self.layer,
-                "EPS": self.dialog.eps,
-                "MIN_POINTS": self.dialog.min_points,
-                "OUTPUT": "memory:dbscan_result",
-            },
-        )
-        self.clustered_layer = result["OUTPUT"]
-        self.clustered_layer.setName("DBSCAN_Result")
+        cluster_layer = self.dialog.build_cluster_layer()
 
         cluster_field = self.dialog.cluster_field
-        feats = list(self.clustered_layer.getFeatures())
+        feats = list(cluster_layer.getFeatures())
         clusters = defaultdict(list)
         for f in feats:
             clusters[f[cluster_field]].append(f)
@@ -133,23 +120,23 @@ class DBSCANAnimator:
                 "Noise",
             )
         )
-        renderer = QgsCategorizedSymbolRenderer(cluster_field, categories)
-        self.clustered_layer.setRenderer(renderer)
+        cluster_layer.setRenderer(
+            QgsCategorizedSymbolRenderer(cluster_field, categories)
+        )
 
         canvas = iface.mapCanvas()
         self.transform = QgsCoordinateTransform(
-            self.clustered_layer.crs(),
+            self.layer.crs(),
             canvas.mapSettings().destinationCrs(),
             QgsProject.instance(),
         )
-
+        cluster_layer = None
         self.timer.start()
 
     # ------------------------------------------------------------------
     def step(self):
         if self.index >= len(self.features) and not self.current_rb:
             self.timer.stop()
-            self.clustered_layer = None
             self.dialog.animation_finished()
             return
 
@@ -199,9 +186,6 @@ class DBSCANAnimator:
     # ------------------------------------------------------------------
     def stop(self):
         self.timer.stop()
-        if self.clustered_layer and self.clustered_layer.id() in QgsProject.instance().mapLayers():
-            QgsProject.instance().removeMapLayer(self.clustered_layer.id())
-        self.clustered_layer = None
         self.index = 0
         self.clear_rubbers()
         self.current_rb = None

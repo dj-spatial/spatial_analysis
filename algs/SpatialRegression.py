@@ -72,7 +72,7 @@ class SpatialRegression(QgisAlgorithm):
     WEIGHT_REPORT = 'WEIGHT_REPORT'
 
     def icon(self):
-        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'central.svg'))
+        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'regression.svg'))
 
     def group(self):
         return self.tr('Spatial Regression')

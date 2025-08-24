@@ -34,8 +34,6 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
-plt.rcParams['font.sans-serif'] = ['Malgun Gothic', 'AppleGothic', 'NanumGothic', 'DejaVu Sans', 'sans-serif']
-plt.rcParams['axes.unicode_minus'] = False
 
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QIcon
@@ -308,7 +306,8 @@ class Tsne(QgisAlgorithm):
                 errors = []
                 embeddings = []
                 current_iter = 0
-                current_init = 'random'
+                current_init = 'pca'
+                exaggeration = 12.0
                 while current_iter < max_iter:
                     step = min(log_interval, max_iter - current_iter)
                     step = max(250, step)
@@ -319,6 +318,7 @@ class Tsne(QgisAlgorithm):
                         'metric': metric,
                         iter_kw: step,
                         'init': current_init,
+                        'early_exaggeration': exaggeration,
                         'random_state': seed,
                         'method': 'barnes_hut',
                         'angle': theta,
@@ -331,6 +331,7 @@ class Tsne(QgisAlgorithm):
                     errors.append(getattr(tsne, 'kl_divergence_', float('nan')))
                     embeddings.append(emb)
                     current_init = emb
+                    exaggeration = 1.0
                 transformed = embeddings[-1]
                 final_cost = errors[-1]
                 frames = []
