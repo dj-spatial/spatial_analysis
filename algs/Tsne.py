@@ -34,6 +34,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
+from matplotlib.lines import Line2D
 
 from qgis.PyQt.QtCore import QVariant
 from qgis.PyQt.QtGui import QIcon
@@ -227,8 +228,24 @@ class Tsne(QgisAlgorithm):
         show_evolution = self.parameterAsBoolean(parameters, self.SHOW_EVOLUTION, context)
 
         feats = list(layer.getFeatures())
+        point_size = 10
+        fig_size = (12, 8)
+        label_size = 12
+        title_size = 14
+        tick_size = 10
+        cats = [f[category] for f in feats] if category else None
+        if category:
+            unique = list(dict.fromkeys(cats))
+            color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color']
+            cat_to_color = {cat_val: color_cycle[i % len(color_cycle)]
+                            for i, cat_val in enumerate(unique)}
+            colors = [cat_to_color[c] for c in cats]
+        else:
+            unique = cat_to_color = colors = None
+
         data = [[f[fld] for fld in fields] for f in feats]
         data = np.array(data, dtype=float)
+        n_samples = data.shape[0]
         if transform == 'standardize':
             data_proc = (data - np.mean(data, axis=0)) / np.std(data, axis=0)
         elif transform == 'standardize_mad':
@@ -290,12 +307,12 @@ class Tsne(QgisAlgorithm):
 
             tsne = OTSNE(**params)
             transformed = np.asarray(tsne.fit(data_proc))
-            final_cost = getattr(tsne, 'kl_divergence_', float('nan'))
             if show_evolution:
                 frames = embeddings[:-1]
                 frame_iters = iterations[:-1]
+                frame_errors = errors[:-1]
             else:
-                frames = frame_iters = None
+                frames = frame_iters = frame_errors = None
 
         else:  # scikit-learn
             if show_evolution:
@@ -328,7 +345,9 @@ class Tsne(QgisAlgorithm):
                     emb = tsne.fit_transform(data_proc)
                     current_iter += step
                     iterations.append(current_iter)
-                    errors.append(getattr(tsne, 'kl_divergence_', float('nan')))
+                    # Normalize KL divergence by sample count
+                    kl = getattr(tsne, 'kl_divergence_', float('nan'))
+                    errors.append(kl)
                     embeddings.append(emb)
                     current_init = emb
                     exaggeration = 1.0
@@ -336,14 +355,18 @@ class Tsne(QgisAlgorithm):
                 final_cost = errors[-1]
                 frames = []
                 frame_iters = []
+                frame_errors = []
                 for i in range(len(embeddings) - 1):
                     start = embeddings[i]
                     end = embeddings[i + 1]
                     it_start = iterations[i]
+                    err_start = errors[i]
+                    err_end = errors[i + 1]
                     it_end = iterations[i + 1]
                     for t in np.linspace(0, 1, 5, endpoint=False):
                         frames.append(start * (1 - t) + end * t)
                         frame_iters.append(int(it_start + (it_end - it_start) * t))
+                        frame_errors.append(err_start + (err_end - err_start) * t)
             else:
                 params = {
                     'n_components': 2,
@@ -359,34 +382,55 @@ class Tsne(QgisAlgorithm):
                 }
                 tsne = SKTSNE(**params)
                 transformed = tsne.fit_transform(data_proc)
-                final_cost = getattr(tsne, 'kl_divergence_', float('nan'))
-                iterations = errors = frames = frame_iters = None
+                iterations = errors = frames = frame_iters = frame_errors = None
 
         gif_path = None
-        feedback.pushInfo('t-SNE:')
-        feedback.pushInfo('final cost:{:.6f}'.format(final_cost))
 
         if show_evolution and iterations:
-            for it, err in zip(reversed(iterations), reversed(errors)):
-                feedback.pushInfo('Iteration {}: error is {:.6f}'.format(it, err))
-            # build animation from collected embeddings excluding final result
             try:
                 if frames and len(frames) > 1:
                     xs = np.concatenate([e[:, 0] for e in frames])
                     ys = np.concatenate([e[:, 1] for e in frames])
                     x_min, x_max = xs.min(), xs.max()
                     y_min, y_max = ys.min(), ys.max()
-                    fig, ax = plt.subplots(figsize=(6, 4))
-                    scat = ax.scatter(frames[0][:, 0], frames[0][:, 1], s=10)
+                    fig, ax = plt.subplots(figsize=fig_size)
+                    if category:
+                        scat = ax.scatter(frames[0][:, 0], frames[0][:, 1], c=colors, s=point_size)
+                        handles = [Line2D([0], [0], marker='o', color='w', label=str(cat),
+                                          markerfacecolor=cat_to_color[cat], markersize=6)
+                                   for cat in unique]
+                        ax.legend(handles=handles, loc='best')
+                    else:
+                        scat = ax.scatter(frames[0][:, 0], frames[0][:, 1], s=point_size)
                     ax.set_xlim(x_min, x_max)
                     ax.set_ylim(y_min, y_max)
-                    ax.set_title('Iteration {}'.format(frame_iters[0]))
+                    ax.set_xlabel('TSNE1', fontsize=label_size)
+                    ax.set_ylabel('TSNE2', fontsize=label_size)
+                    ax.tick_params(labelsize=tick_size)
+                    ax.set_title('Iteration {}'.format(frame_iters[0]), fontsize=title_size)
+                    initial_error = frame_errors[0] if backend_idx == 1 and frame_errors else None
+
+                    def format_error(err):
+                        if backend_idx == 1:
+                            pct = (err / initial_error * 100) if initial_error else 0.0
+                            return f'{pct:.2f}%'
+                        return f'{err:.6f}'
+
+                    err_text = ax.text(
+                        0.02,
+                        0.95,
+                        f'Error: {format_error(frame_errors[0])}',
+                        transform=ax.transAxes,
+                        va='top',
+                        fontsize=label_size,
+                    )
 
                     def update(frame):
                         scat.set_offsets(frames[frame])
                         idx = min(frame, len(frame_iters) - 1)
-                        ax.set_title(f'Iteration {frame_iters[idx]}')
-                        return scat,
+                        ax.set_title(f'Iteration {frame_iters[idx]}', fontsize=title_size)
+                        err_text.set_text(f'Error: {format_error(frame_errors[idx])}')
+                        return scat, err_text
 
                     ani = FuncAnimation(fig, update, frames=len(frames), interval=200, blit=True)
                     gif_path = os.path.join(tempfile.gettempdir(), 'tsne_animation.gif')
@@ -413,19 +457,19 @@ class Tsne(QgisAlgorithm):
                 attrs.append(feat[category])
             new_feat.setAttributes(attrs)
             sink.addFeature(new_feat, QgsFeatureSink.FastInsert)
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=fig_size)
         if category:
-            cats = [f[category] for f in feats]
-            unique = list(dict.fromkeys(cats))
             for cat_val in unique:
                 idx = [i for i, c in enumerate(cats) if c == cat_val]
-                ax.scatter(transformed[idx, 0], transformed[idx, 1], s=10, label=str(cat_val))
+                ax.scatter(transformed[idx, 0], transformed[idx, 1],
+                           c=[cat_to_color[cat_val]], s=point_size, label=str(cat_val))
             ax.legend()
         else:
-            ax.scatter(transformed[:, 0], transformed[:, 1], s=10)
-        ax.set_xlabel('TSNE1')
-        ax.set_ylabel('TSNE2')
-        ax.set_title('t-SNE Scatter Plot')
+            ax.scatter(transformed[:, 0], transformed[:, 1], s=point_size)
+        ax.set_xlabel('TSNE1', fontsize=label_size)
+        ax.set_ylabel('TSNE2', fontsize=label_size)
+        ax.tick_params(labelsize=tick_size)
+        ax.set_title('t-SNE Scatter Plot', fontsize=title_size)
         plot_path = os.path.join(tempfile.gettempdir(), 'tsne_scatter_plot.png')
         fig.savefig(plot_path)
         plt.close(fig)
