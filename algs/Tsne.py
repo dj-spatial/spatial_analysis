@@ -328,6 +328,7 @@ class Tsne(QgisAlgorithm):
                 while current_iter < max_iter:
                     step = min(log_interval, max_iter - current_iter)
                     step = max(250, step)
+                    current_exag = exaggeration
                     params = {
                         'n_components': 2,
                         'perplexity': perplexity,
@@ -335,7 +336,7 @@ class Tsne(QgisAlgorithm):
                         'metric': metric,
                         iter_kw: step,
                         'init': current_init,
-                        'early_exaggeration': exaggeration,
+                        'early_exaggeration': current_exag,
                         'random_state': seed,
                         'method': 'barnes_hut',
                         'angle': theta,
@@ -345,8 +346,10 @@ class Tsne(QgisAlgorithm):
                     emb = tsne.fit_transform(data_proc)
                     current_iter += step
                     iterations.append(current_iter)
-                    # Normalize KL divergence by sample count
+                    # Scale KL divergence by exaggeration and sample count
                     kl = getattr(tsne, 'kl_divergence_', float('nan'))
+                    if np.isfinite(kl):
+                        kl = kl * current_exag / n_samples
                     errors.append(kl)
                     embeddings.append(emb)
                     current_init = emb
@@ -367,6 +370,15 @@ class Tsne(QgisAlgorithm):
                         frames.append(start * (1 - t) + end * t)
                         frame_iters.append(int(it_start + (it_end - it_start) * t))
                         frame_errors.append(err_start + (err_end - err_start) * t)
+                frames.append(embeddings[-1])
+                frame_iters.append(iterations[-1])
+                frame_errors.append(errors[-1])
+                if frame_errors:
+                    initial_error = frame_errors[0]
+                    frame_errors = [
+                        (err / initial_error * 100) if initial_error else 0.0
+                        for err in frame_errors
+                    ]
             else:
                 params = {
                     'n_components': 2,
@@ -408,29 +420,29 @@ class Tsne(QgisAlgorithm):
                     ax.set_ylabel('TSNE2', fontsize=label_size)
                     ax.tick_params(labelsize=tick_size)
                     ax.set_title('Iteration {}'.format(frame_iters[0]), fontsize=title_size)
-                    initial_error = frame_errors[0] if backend_idx == 1 and frame_errors else None
 
                     def format_error(err):
-                        if backend_idx == 1:
-                            pct = (err / initial_error * 100) if initial_error else 0.0
-                            return f'{pct:.2f}%'
                         return f'{err:.6f}'
 
-                    err_text = ax.text(
-                        0.02,
-                        0.95,
-                        f'Error: {format_error(frame_errors[0])}',
-                        transform=ax.transAxes,
-                        va='top',
-                        fontsize=label_size,
-                    )
+                    err_text = None
+                    if backend_idx == 0:
+                        err_text = ax.text(
+                            0.02,
+                            0.95,
+                            f'Error: {format_error(frame_errors[0])}',
+                            transform=ax.transAxes,
+                            va='top',
+                            fontsize=label_size,
+                        )
 
                     def update(frame):
                         scat.set_offsets(frames[frame])
                         idx = min(frame, len(frame_iters) - 1)
                         ax.set_title(f'Iteration {frame_iters[idx]}', fontsize=title_size)
-                        err_text.set_text(f'Error: {format_error(frame_errors[idx])}')
-                        return scat, err_text
+                        if err_text:
+                            err_text.set_text(f'Error: {format_error(frame_errors[idx])}')
+                            return scat, err_text
+                        return scat,
 
                     ani = FuncAnimation(fig, update, frames=len(frames), interval=200, blit=True)
                     gif_path = os.path.join(tempfile.gettempdir(), 'tsne_animation.gif')
@@ -439,7 +451,7 @@ class Tsne(QgisAlgorithm):
             except Exception:
                 gif_path = None
 
-        feedback.pushInfo('Using no_dims = 2, perplexity = {}, and theta = {}'.format(2, perplexity, theta))
+        feedback.pushInfo('Using no_dims = 2, perplexity = {}, and theta = {}'.format(perplexity, theta))
         new_fields = QgsFields(layer.fields())
         new_fields.append(QgsField('TSNE1', QVariant.Double))
         new_fields.append(QgsField('TSNE2', QVariant.Double))

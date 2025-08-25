@@ -55,6 +55,7 @@ class ParameterControlDialog(QDialog):
         self.eps = None
         self.eps_min = 1.0
         self.eps_max = 10.0
+        self.eps_factor = 10
         self.timer_interval = 50
         self.fill_alpha = 50
         self.marker_size = "0.5"
@@ -190,6 +191,14 @@ class ParameterControlDialog(QDialog):
             w.setEnabled(enabled)
 
     # ------------------------------------------------------------------
+    def format_eps(self, eps):
+        if eps < 1:
+            factor = 1_000_000
+            trunc = int(eps * factor) / factor
+            return f"{trunc:.6f}"
+        return f"{eps:.2f}"
+
+    # ------------------------------------------------------------------
     def set_playing(self, playing):
         geom_mode = self.variable_widget.v_type == "geom"
         self.layer_combo.setEnabled(not playing)
@@ -280,9 +289,10 @@ class ParameterControlDialog(QDialog):
     # ------------------------------------------------------------------
     def update_eps_slider(self):
         self.eps_slider.blockSignals(True)
-        self.eps_slider.setMinimum(int(self.eps_min * 10))
-        self.eps_slider.setMaximum(int(self.eps_max * 10))
-        self.eps_slider.setValue(int(self.eps * 10))
+        self.eps_factor = 1_000_000 if self.eps_max < 1 else 10
+        self.eps_slider.setMinimum(int(self.eps_min * self.eps_factor))
+        self.eps_slider.setMaximum(int(self.eps_max * self.eps_factor))
+        self.eps_slider.setValue(int(self.eps * self.eps_factor))
         self.eps_slider.blockSignals(False)
         self.eps_label.setText(f"Epsilon: {self.eps:.2f}")
         self.update_eps_ratio()
@@ -308,7 +318,7 @@ class ParameterControlDialog(QDialog):
 
     # ------------------------------------------------------------------
     def update_eps(self, value):
-        self.eps = value / 10.0
+        self.eps = value / self.eps_factor
         self.eps_label.setText(f"Epsilon: {self.eps:.2f}")
         self.update_eps_ratio()
         self.refresh_plot()

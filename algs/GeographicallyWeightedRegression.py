@@ -82,7 +82,7 @@ class GeographicallyWeightedRegression(QgisAlgorithm):
     CRIT_OPTS = ['AICc', 'AIC', 'BIC/MDL', 'CV']
 
     def icon(self):
-        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'cluster.svg'))
+        return QIcon(os.path.join(pluginPath, 'spatial_analysis', 'icons', 'regression.svg'))
 
     def group(self):
         return self.tr('Spatial Regression')
