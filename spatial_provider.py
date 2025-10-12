@@ -52,6 +52,7 @@ from .algs import (
     SpatialRegression,
     GeographicallyWeightedRegression,
     Pca,
+    Mds,
     Tsne
 )
 
@@ -138,6 +139,7 @@ class SpatialProvider(QgsProcessingProvider):
             SpatialRegression.SpatialRegression(),
             GeographicallyWeightedRegression.GeographicallyWeightedRegression(),
             Pca.Pca(),
+            Mds.Mds(),
             Tsne.Tsne()
         ]
         

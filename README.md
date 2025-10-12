@@ -7,7 +7,7 @@ The Plugin implements spatial clustering, central tendancy and distribution to p
 2. Spatial Central Tendancy(Mean Center, Midian Center, Central Feature)
 3. Spatial Distrubution(Standard Distance, Standard Deviation Ellipse)
 4. Regression(Geographically Weighted Regression)
-5. Dimension Reduction(PCA, t-SNE)
+5. Dimension Reduction(PCA, MDS, t-SNE)
 
 ## License
 The SpatialAnalyzer Plugin is free software; you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation.
